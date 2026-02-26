@@ -363,6 +363,8 @@ struct TitlebarControlsView: View {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             } label: {
                 iconLabel(systemName: "plus", config: config)
+            } primaryAction: {
+                onNewTab()
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -686,7 +688,15 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         let toggleNotifications: () -> Void = { _ = AppDelegate.shared?.toggleNotificationsPopover(animated: true) }
         let newTab = { _ = AppDelegate.shared?.tabManager?.addTab() }
         let newTmuxTab: () -> Void = {
-            _ = AppDelegate.shared?.tabManager?.addTab(isTmux: true)
+            // Inherit current workspace's directory for the new tmux workspace
+            if let appDelegate = AppDelegate.shared {
+                let currentDir = appDelegate.tabManager?.selectedWorkspace?.currentDirectory
+                _ = appDelegate.addWorkspaceInPreferredMainWindow(
+                    workingDirectory: currentDir,
+                    isTmux: true,
+                    debugSource: "titlebar.newTmuxTab"
+                )
+            }
         }
 
         hostingView = NonDraggableHostingView(

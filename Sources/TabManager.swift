@@ -764,6 +764,10 @@ class TabManager: ObservableObject {
         placementOverride: NewWorkspacePlacement? = nil,
         isTmux: Bool = false
     ) -> Workspace {
+        var isTmux = isTmux
+        if !isTmux && EmbeddedServerSettings.tmuxEnabled() && EmbeddedServerSettings.isEnabled() {
+            isTmux = true
+        }
         sentryBreadcrumb("workspace.create", data: ["tabCount": tabs.count + 1, "tmux": isTmux])
         let workingDirectory = normalizedWorkingDirectory(overrideWorkingDirectory) ?? preferredWorkingDirectoryForNewTab()
         let inheritedConfig = inheritedTerminalConfigForNewWorkspace()

@@ -387,7 +387,13 @@ struct cmuxApp: App {
                 // New Tmux Workspace — terminals inside tmux for 1:1 web mirroring
                 Button("New Tmux Workspace") {
                     if let appDelegate = AppDelegate.shared {
-                        _ = appDelegate.addWorkspaceInPreferredMainWindow(isTmux: true, debugSource: "menu.newTmuxWorkspace")
+                        // Inherit the current workspace's directory
+                        let currentDir = appDelegate.tabManager?.selectedWorkspace?.currentDirectory
+                        _ = appDelegate.addWorkspaceInPreferredMainWindow(
+                            workingDirectory: currentDir,
+                            isTmux: true,
+                            debugSource: "menu.newTmuxWorkspace"
+                        )
                     }
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
@@ -3180,6 +3186,12 @@ struct SettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .multilineTextAlignment(.trailing)
                                 .disabled(!embeddedServerEnabled)
+                                .onChange(of: embeddedServerPort) { _, _ in
+                                    if embeddedServerEnabled && EmbeddedServer.shared.isRunning {
+                                        EmbeddedServer.shared.stop()
+                                        EmbeddedServer.shared.start()
+                                    }
+                                }
                         }
 
                         SettingsCardDivider()

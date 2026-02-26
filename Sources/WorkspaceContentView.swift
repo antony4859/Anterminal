@@ -52,120 +52,116 @@ struct WorkspaceContentView: View {
             }
         }()
 
-        BonsplitView(controller: workspace.bonsplitController) { tab, paneId in
-            // Content for each tab in bonsplit
-            let _ = Self.debugPanelLookup(tab: tab, workspace: workspace)
-            if let panel = workspace.panel(for: tab.id) {
-                let isFocused = isWorkspaceInputActive && workspace.focusedPanelId == panel.id
-                let isSelectedInPane = workspace.bonsplitController.selectedTab(inPane: paneId)?.id == tab.id
-                let isVisibleInUI = Self.panelVisibleInUI(
-                    isWorkspaceVisible: isWorkspaceVisible,
-                    isSelectedInPane: isSelectedInPane,
-                    isFocused: isFocused
-                )
-                let hasUnreadNotification = Workspace.shouldShowUnreadIndicator(
-                    hasUnreadNotification: notificationStore.hasUnreadNotification(forTabId: workspace.id, surfaceId: panel.id),
-                    isManuallyUnread: workspace.manualUnreadPanelIds.contains(panel.id)
-                )
-                PanelContentView(
-                    panel: panel,
-                    isFocused: isFocused,
-                    isSelectedInPane: isSelectedInPane,
-                    isVisibleInUI: isVisibleInUI,
-                    portalPriority: workspacePortalPriority,
-                    isSplit: isSplit,
-                    appearance: appearance,
-                    hasUnreadNotification: hasUnreadNotification,
-                    onFocus: {
-                        // Keep bonsplit focus in sync with the AppKit first responder for the
-                        // active workspace. This prevents divergence between the blue focused-tab
-                        // indicator and where keyboard input/flash-focus actually lands.
-                        guard isWorkspaceInputActive else { return }
-                        guard workspace.panels[panel.id] != nil else { return }
-                        workspace.focusPanel(panel.id, trigger: .terminalFirstResponder)
-                    },
-                    onRequestPanelFocus: {
-                        guard isWorkspaceInputActive else { return }
-                        guard workspace.panels[panel.id] != nil else { return }
-                        workspace.focusPanel(panel.id)
-                    },
-                    onTriggerFlash: { workspace.triggerDebugFlash(panelId: panel.id) }
-                )
-                .onTapGesture {
-                    workspace.bonsplitController.focusPane(paneId)
-                }
-            } else {
-                // Fallback for tabs without panels (shouldn't happen normally)
-                EmptyPanelView(workspace: workspace, paneId: paneId)
-            }
-        } emptyPane: { paneId in
-            // Empty pane content
-            EmptyPanelView(workspace: workspace, paneId: paneId)
-                .onTapGesture {
-                    workspace.bonsplitController.focusPane(paneId)
-                }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            syncBonsplitNotificationBadges()
-            refreshGhosttyAppearanceConfig(reason: "onAppear")
-        }
-        .onChange(of: notificationStore.notifications) { _, _ in
-            syncBonsplitNotificationBadges()
-        }
-        .onChange(of: workspace.manualUnreadPanelIds) { _, _ in
-            syncBonsplitNotificationBadges()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .ghosttyConfigDidReload)) { _ in
-            refreshGhosttyAppearanceConfig(reason: "ghosttyConfigDidReload")
-        }
-        .onChange(of: colorScheme) { oldValue, newValue in
-            // Keep split overlay color/opacity in sync with light/dark theme transitions.
-            refreshGhosttyAppearanceConfig(reason: "colorSchemeChanged:\(oldValue)->\(newValue)")
-        }
-        // MARK: - Panel Zoom Overlay (Cmd+Shift+Enter)
-        // When a panel is zoomed, overlay it fullscreen on top of the split layout.
-        .overlay {
-            if let zoomedId = workspace.zoomedPanelId,
-               let panel = workspace.panels[zoomedId] {
+        Group {
+            if let zoomedId = workspace.zoomedPanelId, let panel = workspace.panels[zoomedId] {
+                // MARK: - Zoomed mode: show only this panel, no splits
                 ZStack {
-                    // Dark background to hide the splits underneath
-                    Color.black.opacity(0.95)
-
                     PanelContentView(
                         panel: panel,
                         isFocused: true,
                         isSelectedInPane: true,
                         isVisibleInUI: isWorkspaceVisible,
-                        portalPriority: workspacePortalPriority + 100, // ensure on top
+                        portalPriority: workspacePortalPriority,
                         isSplit: false,
-                        appearance: PanelAppearance.fromConfig(config),
+                        appearance: appearance,
                         hasUnreadNotification: false,
                         onFocus: {},
                         onRequestPanelFocus: {},
                         onTriggerFlash: {}
                     )
 
-                    // Zoom indicator badge
+                    // Small "ZOOMED" indicator
                     VStack {
                         HStack {
                             Spacer()
-                            Text("ZOOMED")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white.opacity(0.6))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(4)
+                            Text("ZOOMED — Cmd+Shift+Enter to exit")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.5))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.black.opacity(0.4))
+                                .cornerRadius(6)
                                 .padding(8)
                         }
                         Spacer()
                     }
                 }
-                .transition(.opacity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // MARK: - Normal mode: show the split layout
+                BonsplitView(controller: workspace.bonsplitController) { tab, paneId in
+                    // Content for each tab in bonsplit
+                    let _ = Self.debugPanelLookup(tab: tab, workspace: workspace)
+                    if let panel = workspace.panel(for: tab.id) {
+                        let isFocused = isWorkspaceInputActive && workspace.focusedPanelId == panel.id
+                        let isSelectedInPane = workspace.bonsplitController.selectedTab(inPane: paneId)?.id == tab.id
+                        let isVisibleInUI = Self.panelVisibleInUI(
+                            isWorkspaceVisible: isWorkspaceVisible,
+                            isSelectedInPane: isSelectedInPane,
+                            isFocused: isFocused
+                        )
+                        let hasUnreadNotification = Workspace.shouldShowUnreadIndicator(
+                            hasUnreadNotification: notificationStore.hasUnreadNotification(forTabId: workspace.id, surfaceId: panel.id),
+                            isManuallyUnread: workspace.manualUnreadPanelIds.contains(panel.id)
+                        )
+                        PanelContentView(
+                            panel: panel,
+                            isFocused: isFocused,
+                            isSelectedInPane: isSelectedInPane,
+                            isVisibleInUI: isVisibleInUI,
+                            portalPriority: workspacePortalPriority,
+                            isSplit: isSplit,
+                            appearance: appearance,
+                            hasUnreadNotification: hasUnreadNotification,
+                            onFocus: {
+                                // Keep bonsplit focus in sync with the AppKit first responder for the
+                                // active workspace. This prevents divergence between the blue focused-tab
+                                // indicator and where keyboard input/flash-focus actually lands.
+                                guard isWorkspaceInputActive else { return }
+                                guard workspace.panels[panel.id] != nil else { return }
+                                workspace.focusPanel(panel.id, trigger: .terminalFirstResponder)
+                            },
+                            onRequestPanelFocus: {
+                                guard isWorkspaceInputActive else { return }
+                                guard workspace.panels[panel.id] != nil else { return }
+                                workspace.focusPanel(panel.id)
+                            },
+                            onTriggerFlash: { workspace.triggerDebugFlash(panelId: panel.id) }
+                        )
+                        .onTapGesture {
+                            workspace.bonsplitController.focusPane(paneId)
+                        }
+                    } else {
+                        // Fallback for tabs without panels (shouldn't happen normally)
+                        EmptyPanelView(workspace: workspace, paneId: paneId)
+                    }
+                } emptyPane: { paneId in
+                    // Empty pane content
+                    EmptyPanelView(workspace: workspace, paneId: paneId)
+                        .onTapGesture {
+                            workspace.bonsplitController.focusPane(paneId)
+                        }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    syncBonsplitNotificationBadges()
+                    refreshGhosttyAppearanceConfig(reason: "onAppear")
+                }
+                .onChange(of: notificationStore.notifications) { _, _ in
+                    syncBonsplitNotificationBadges()
+                }
+                .onChange(of: workspace.manualUnreadPanelIds) { _, _ in
+                    syncBonsplitNotificationBadges()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .ghosttyConfigDidReload)) { _ in
+                    refreshGhosttyAppearanceConfig(reason: "ghosttyConfigDidReload")
+                }
+                .onChange(of: colorScheme) { oldValue, newValue in
+                    // Keep split overlay color/opacity in sync with light/dark theme transitions.
+                    refreshGhosttyAppearanceConfig(reason: "colorSchemeChanged:\(oldValue)->\(newValue)")
+                }
             }
         }
-        .animation(.easeInOut(duration: 0.15), value: workspace.zoomedPanelId)
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyDefaultBackgroundDidChange)) { notification in
             let payloadHex = (notification.userInfo?[GhosttyNotificationKey.backgroundColor] as? NSColor)?.hexString() ?? "nil"
             let eventId = (notification.userInfo?[GhosttyNotificationKey.backgroundEventId] as? NSNumber)?.uint64Value

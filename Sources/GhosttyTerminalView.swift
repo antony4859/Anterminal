@@ -1858,16 +1858,16 @@ final class TerminalSurface: Identifiable, ObservableObject {
         // When a workspace has tmux enabled, run terminals in tmux sessions
         // so the web UI can attach to the same session for 1:1 mirroring.
         let currentTabId = self.tabId
-        let useTmux: Bool = MainActor.assumeIsolated {
+        let tmuxInfo: (enabled: Bool, title: String?) = MainActor.assumeIsolated {
             let tabManager = AppDelegate.shared?.tabManager
             let workspace = tabManager?.tabs.first(where: { $0.id == currentTabId })
-            return workspace?.isTmuxEnabled ?? false
+            return (workspace?.isTmuxEnabled ?? false, workspace?.customTitle ?? workspace?.title)
         }
         var tmuxCommand: String?
 
-        if useTmux {
+        if tmuxInfo.enabled {
             let workDir = workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser.path
-            tmuxCommand = TmuxSessionManager.shared.buildCommand(for: id, workingDirectory: workDir)
+            tmuxCommand = TmuxSessionManager.shared.buildCommand(for: id, workingDirectory: workDir, workspaceTitle: tmuxInfo.title)
         }
 
         if let tmuxCommand {

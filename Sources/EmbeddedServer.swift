@@ -31,8 +31,12 @@ class EmbeddedServer {
     private var stateTimer: Timer?
     /// Timer that periodically reaps orphaned PTY sessions and sends WebSocket pings.
     private var reaperTimer: Timer?
+    /// Timer that periodically sends WebSocket pings.
+    private var pingTimer: Timer?
     /// Cached tmux session data for inclusion in state broadcasts.
     private var cachedTmuxSessions: [[String: Any]] = []
+    /// Last time the tmux session cache was refreshed.
+    private var lastTmuxRefresh: Date = .distantPast
 
     private init() {}
 
@@ -45,6 +49,9 @@ class EmbeddedServer {
     func start() {
         guard !isRunning else { return }
 
+        // Kill any existing process on our port (e.g. a stale server from a previous launch)
+        killProcessOnPort(Int(port))
+
         let server = HttpServer()
         self.server = server
 
@@ -53,17 +60,30 @@ class EmbeddedServer {
         setupAPI(server)
         setupWebSocket(server)
 
-        do {
-            try server.start(port, forceIPv4: false, priority: .default)
+        // Try to start, with one retry if the port is still being released
+        var started = false
+        for attempt in 1...3 {
+            do {
+                try server.start(port, forceIPv4: false, priority: .default)
+                started = true
+                break
+            } catch {
+                if attempt < 3 {
+                    print("anterminal: Port \(port) not ready (attempt \(attempt)/3), retrying...")
+                    usleep(500_000) // 500ms between retries
+                } else {
+                    print("EmbeddedServer: Failed to start after 3 attempts: \(error)")
+                    sentryBreadcrumb("embeddedServer.startFailed", category: "server", data: ["error": error.localizedDescription])
+                    self.server = nil
+                }
+            }
+        }
+        if started {
             isRunning = true
             startStateSync()
             startReaperAndHeartbeat()
             print("anterminal: Running on http://0.0.0.0:\(port)")
             sentryBreadcrumb("embeddedServer.started", category: "server", data: ["port": Int(port)])
-        } catch {
-            print("EmbeddedServer: Failed to start: \(error)")
-            sentryBreadcrumb("embeddedServer.startFailed", category: "server", data: ["error": error.localizedDescription])
-            self.server = nil
         }
     }
 
@@ -76,6 +96,8 @@ class EmbeddedServer {
         stateTimer = nil
         reaperTimer?.invalidate()
         reaperTimer = nil
+        pingTimer?.invalidate()
+        pingTimer = nil
         connectedClients.removeAll()
         PTYSessionManager.shared.removeAll()
         sentryBreadcrumb("embeddedServer.stopped", category: "server")
@@ -167,6 +189,55 @@ class EmbeddedServer {
             return .ok(.json(result as Any))
         }
 
+        // POST /api/workspaces/new - create a new workspace in the native app
+        server.POST["/api/workspaces/new"] = { request in
+            let body = (try? JSONSerialization.jsonObject(with: Data(request.body))) as? [String: Any]
+            let isTmux = (body?["tmux"] as? Bool) ?? false
+            let directory = body?["directory"] as? String
+
+            var resultId: String?
+            // Must create the workspace on the main thread
+            let sem = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                if let appDelegate = AppDelegate.shared {
+                    let wsId = appDelegate.addWorkspaceInPreferredMainWindow(
+                        workingDirectory: directory,
+                        isTmux: isTmux,
+                        debugSource: "webAPI.newWorkspace"
+                    )
+                    resultId = wsId?.uuidString
+                }
+                sem.signal()
+            }
+            _ = sem.wait(timeout: .now() + 10)
+
+            if let resultId {
+                return .ok(.json(["ok": true, "workspaceId": resultId, "tmux": isTmux] as [String: Any] as Any))
+            } else {
+                return .internalServerError
+            }
+        }
+
+        // POST /api/workspaces/:id/tmux - toggle tmux for a workspace
+        server["/api/workspaces/:id/tmux"] = { request in
+            guard let wsId = request.params[":id"] else {
+                return .badRequest(.text("Missing workspace id"))
+            }
+            let body = (try? JSONSerialization.jsonObject(with: Data(request.body))) as? [String: Any]
+            let enable = (body?["enabled"] as? Bool) ?? true
+
+            let sem = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                if let tabManager = AppDelegate.shared?.tabManager,
+                   let workspace = tabManager.tabs.first(where: { $0.id.uuidString == wsId }) {
+                    workspace.isTmuxEnabled = enable
+                }
+                sem.signal()
+            }
+            _ = sem.wait(timeout: .now() + 5)
+            return .ok(.json(["ok": true, "tmuxEnabled": enable] as [String: Any] as Any))
+        }
+
         // GET /api/tmux/sessions - list all anterminal-managed tmux sessions
         server["/api/tmux/sessions"] = { _ in
             let sessions = TmuxSessionManager.shared.listActiveSessions()
@@ -181,6 +252,22 @@ class EmbeddedServer {
                 ]
             }
             return .ok(.json(json as Any))
+        }
+
+        // DELETE /api/tmux/sessions/:name - kill a specific tmux session
+        server.DELETE["/api/tmux/sessions/:name"] = { request in
+            guard let name = request.params[":name"] else {
+                return .badRequest(.text("Missing session name"))
+            }
+            TmuxSessionManager.shared.killSession(name)
+            return .ok(.json(["ok": true, "killed": name] as [String: Any] as Any))
+        }
+
+        // DELETE /api/tmux/sessions - kill ALL anterminal tmux sessions
+        server.DELETE["/api/tmux/sessions"] = { _ in
+            let sessions = TmuxSessionManager.shared.listActiveSessions()
+            TmuxSessionManager.shared.killAllSessions()
+            return .ok(.json(["ok": true, "killed": sessions.count] as [String: Any] as Any))
         }
 
         // POST /api/workspaces/:id/tmux - toggle tmux for a workspace
@@ -201,6 +288,79 @@ class EmbeddedServer {
                 workspace.isTmuxEnabled = enable
             }
             return .ok(.json(["ok": true, "tmuxEnabled": enable] as [String: Any] as Any))
+        }
+
+        // MARK: - Claude Code Session Endpoints
+
+        // GET /api/cc/sessions - list recent Claude Code sessions
+        server["/api/cc/sessions"] = { _ in
+            let sessions = ClaudeSessionScanner.shared.recentSessions()
+            let formatter = ISO8601DateFormatter()
+            let json: [[String: Any]] = sessions.map { s in
+                [
+                    "uuid": s.uuid,
+                    "projectPath": s.projectPath,
+                    "projectName": s.projectName,
+                    "lastModified": formatter.string(from: s.lastModified),
+                    "sizeBytes": s.sizeBytes
+                ]
+            }
+            return .ok(.json(json as Any))
+        }
+
+        // POST /api/cc/resume - resume a CC session in a new tmux workspace
+        server.POST["/api/cc/resume"] = { request in
+            let body = (try? JSONSerialization.jsonObject(with: Data(request.body))) as? [String: Any]
+            let projectPath = body?["projectPath"] as? String
+
+            guard let projectPath else {
+                return .badRequest(.text("projectPath required"))
+            }
+
+            var resultId: String?
+            let sem = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                if let appDelegate = AppDelegate.shared {
+                    let wsId = appDelegate.addWorkspaceInPreferredMainWindow(
+                        workingDirectory: projectPath,
+                        isTmux: true,
+                        debugSource: "webAPI.ccResume"
+                    )
+                    resultId = wsId?.uuidString
+                }
+                sem.signal()
+            }
+            _ = sem.wait(timeout: .now() + 10)
+
+            if let resultId {
+                return .ok(.json(["ok": true, "workspaceId": resultId] as [String: Any] as Any))
+            }
+            return .internalServerError
+        }
+
+        // MARK: - Pane Split Endpoint
+
+        // POST /api/workspaces/:id/split - split the focused panel in a workspace
+        server.POST["/api/workspaces/:id/split"] = { request in
+            guard let wsId = request.params[":id"] else {
+                return .badRequest(.text("Missing workspace id"))
+            }
+            let body = (try? JSONSerialization.jsonObject(with: Data(request.body))) as? [String: Any]
+            let direction = (body?["direction"] as? String) ?? "right"
+
+            let sem = DispatchSemaphore(value: 0)
+            var success = false
+            DispatchQueue.main.async {
+                if let tabManager = AppDelegate.shared?.tabManager,
+                   let workspace = tabManager.tabs.first(where: { $0.id.uuidString == wsId }),
+                   let surfaceId = workspace.focusedPanelId {
+                    success = tabManager.newSplit(tabId: workspace.id, surfaceId: surfaceId,
+                                                  direction: direction == "down" ? .down : .right) != nil
+                }
+                sem.signal()
+            }
+            _ = sem.wait(timeout: .now() + 10)
+            return .ok(.json(["ok": success] as [String: Any] as Any))
         }
     }
 
@@ -414,8 +574,12 @@ class EmbeddedServer {
                                     return
                                 }
                             }
-                            // Fallback: wrap plain text response.
-                            session.writeText("{\"id\":\"\(commandId)\",\"result\":\"\(response)\"}")
+                            // Fallback: wrap plain text response using JSONSerialization to prevent injection.
+                            let fallbackDict: [String: Any] = ["id": commandId, "result": response]
+                            if let fallbackData = try? JSONSerialization.data(withJSONObject: fallbackDict),
+                               let fallbackStr = String(data: fallbackData, encoding: .utf8) {
+                                session.writeText(fallbackStr)
+                            }
                         } else {
                             session.writeText(response)
                         }
@@ -450,23 +614,31 @@ class EmbeddedServer {
     private func broadcastState() {
         guard !connectedClients.isEmpty else { return }
 
-        // Refresh tmux session cache on a background thread.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let sessions = TmuxSessionManager.shared.listActiveSessions()
-            let formatter = ISO8601DateFormatter()
-            let tmuxJson: [[String: Any]] = sessions.map { s in
-                [
-                    "name": s.name,
-                    "windowCount": s.windowCount,
-                    "attached": s.attached,
-                    "currentPath": s.currentPath,
-                    "created": formatter.string(from: s.created)
-                ]
+        let now = Date()
+        // Only refresh tmux sessions every 10 seconds to avoid spawning tmux every 2s.
+        if now.timeIntervalSince(lastTmuxRefresh) >= 10.0 {
+            lastTmuxRefresh = now
+            // Refresh tmux session cache on a background thread.
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let sessions = TmuxSessionManager.shared.listActiveSessions()
+                let formatter = ISO8601DateFormatter()
+                let tmuxJson: [[String: Any]] = sessions.map { s in
+                    [
+                        "name": s.name,
+                        "windowCount": s.windowCount,
+                        "attached": s.attached,
+                        "currentPath": s.currentPath,
+                        "created": formatter.string(from: s.created)
+                    ]
+                }
+                DispatchQueue.main.async {
+                    self?.cachedTmuxSessions = tmuxJson
+                    self?.doBroadcastState()
+                }
             }
-            DispatchQueue.main.async {
-                self?.cachedTmuxSessions = tmuxJson
-                self?.doBroadcastState()
-            }
+        } else {
+            // Use cached tmux data.
+            doBroadcastState()
         }
     }
 
@@ -505,7 +677,7 @@ class EmbeddedServer {
             }
         }
         // Separate ping timer every 30 seconds.
-        Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.sendPings()
             }
@@ -563,8 +735,10 @@ class EmbeddedServer {
             "workspaceCount": tabManager?.tabs.count ?? 0,
             "selectedWorkspace": tabManager?.selectedTabId?.uuidString ?? "",
             "unreadCount": TerminalNotificationStore.shared.unreadCount,
+            "connectedClients": connectedClients.count,
             "port": Int(port),
-            "uptime": ProcessInfo.processInfo.systemUptime
+            "uptime": ProcessInfo.processInfo.systemUptime,
+            "ccSessionCount": ClaudeSessionScanner.shared.recentSessions(limit: 1).count > 0 ? ClaudeSessionScanner.shared.recentSessions().count : 0
         ]
     }
 
@@ -589,7 +763,10 @@ class EmbeddedServer {
             // Include tmux session info for each panel so the web UI can attach.
             var panels: [[String: Any]] = []
             for (panelId, _) in workspace.panels {
-                var panelInfo: [String: Any] = ["id": panelId.uuidString]
+                var panelInfo: [String: Any] = [
+                    "id": panelId.uuidString,
+                    "directory": workspace.panelDirectories[panelId] ?? workspace.currentDirectory
+                ]
                 if let tmuxName = TmuxSessionManager.shared.getSessionName(for: panelId) {
                     panelInfo["tmuxSession"] = tmuxName
                 }
@@ -598,6 +775,15 @@ class EmbeddedServer {
             if !panels.isEmpty {
                 info["panels"] = panels
             }
+
+            // Include the split tree layout so the web UI can mirror the exact pane arrangement
+            let tree = workspace.bonsplitController.treeSnapshot()
+            let layoutSnapshot = workspace.sessionLayoutSnapshot(from: tree)
+            if let layoutData = try? JSONEncoder().encode(layoutSnapshot),
+               let layoutJSON = try? JSONSerialization.jsonObject(with: layoutData) {
+                info["layout"] = layoutJSON
+            }
+
             return info
         }
     }
@@ -615,5 +801,62 @@ class EmbeddedServer {
                 "createdAt": ISO8601DateFormatter().string(from: n.createdAt)
             ]
         }
+    }
+
+    // MARK: - Port Cleanup
+
+    /// Kill any process listening on the given port and wait for it to release.
+    private func killProcessOnPort(_ port: Int) {
+        // SIGKILL to ensure they die immediately
+        let task = Process()
+        let pipe = Pipe()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        task.arguments = ["-ti", ":\(port)"]
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch { return }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return }
+
+        var killed = false
+        for line in output.split(separator: "\n") {
+            if let pid = Int32(line.trimmingCharacters(in: .whitespacesAndNewlines)), pid != getpid() {
+                kill(pid, SIGKILL)  // SIGKILL, not SIGTERM — we need the port NOW
+                killed = true
+                print("anterminal: Killed stale process \(pid) on port \(port)")
+            }
+        }
+
+        guard killed else { return }
+
+        // Wait for the port to actually become available (up to 3 seconds)
+        for _ in 0..<30 {
+            usleep(100_000) // 100ms
+            let check = Process()
+            let checkPipe = Pipe()
+            check.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+            check.arguments = ["-ti", ":\(port)"]
+            check.standardOutput = checkPipe
+            check.standardError = FileHandle.nullDevice
+            do {
+                try check.run()
+                check.waitUntilExit()
+                let checkData = checkPipe.fileHandleForReading.readDataToEndOfFile()
+                let checkOutput = String(data: checkData, encoding: .utf8) ?? ""
+                // Filter out our own PID
+                let otherPids = checkOutput.split(separator: "\n").filter {
+                    Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) != getpid()
+                }
+                if otherPids.isEmpty {
+                    print("anterminal: Port \(port) is now free")
+                    return
+                }
+            } catch { return }
+        }
+        print("anterminal: Warning — port \(port) may still be in use after 3s wait")
     }
 }

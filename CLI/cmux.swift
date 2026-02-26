@@ -522,11 +522,19 @@ final class SocketClient {
     func send(command: String) throws -> String {
         guard socketFD >= 0 else { throw CLIError(message: "Not connected") }
         let payload = command + "\n"
-        try payload.withCString { ptr in
+        var writeFailed = false
+        payload.withCString { ptr in
             let sent = Darwin.write(socketFD, ptr, strlen(ptr))
             if sent < 0 {
-                throw CLIError(message: "Failed to write to socket")
+                // EPIPE means the server closed the connection — treat as fire-and-forget success
+                // (common for claude-hook commands where the server processes and closes quickly)
+                if errno == EPIPE {
+                    writeFailed = true
+                }
             }
+        }
+        if writeFailed {
+            return "OK"
         }
 
         var data = Data()
@@ -1304,9 +1312,12 @@ struct CMUXCLI {
                 try runClaudeHook(commandArgs: commandArgs, client: client, telemetry: cliTelemetry)
                 cliTelemetry.breadcrumb("claude-hook.completed")
             } catch {
+                // Claude hooks are best-effort — don't let socket errors propagate
+                // as that causes "Stop hook error" in Claude Code.
                 cliTelemetry.breadcrumb("claude-hook.failure")
                 cliTelemetry.captureError(stage: "claude_hook_dispatch", error: error)
-                throw error
+                print("OK")
+                // Exit cleanly instead of throwing
             }
 
         case "set-status":
@@ -5403,6 +5414,11 @@ struct CMUXCLI {
 @main
 struct CMUXTermMain {
     static func main() {
+        // Ignore SIGPIPE so socket writes don't kill the process.
+        // This prevents exit code 141 when the server closes the connection
+        // before the CLI finishes writing (common in claude-hook commands).
+        signal(SIGPIPE, SIG_IGN)
+
         let cli = CMUXCLI(args: CommandLine.arguments)
         do {
             try cli.run()

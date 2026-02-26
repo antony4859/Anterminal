@@ -37,7 +37,21 @@ class TmuxSessionManager {
     // MARK: - Session Naming
 
     /// Generate a tmux session name for a panel.
-    func sessionName(for panelId: UUID) -> String {
+    /// If a workspace title is provided, use it as the base (sanitized).
+    /// Otherwise fall back to the panel UUID prefix.
+    func sessionName(for panelId: UUID, workspaceTitle: String? = nil) -> String {
+        if let title = workspaceTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty {
+            // Sanitize: tmux session names can't have dots or colons
+            let safe = title
+                .replacingOccurrences(of: " ", with: "-")
+                .replacingOccurrences(of: ".", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+                .lowercased()
+            let short = String(safe.prefix(30))
+            let suffix = panelId.uuidString.prefix(4).lowercased()
+            return sessionPrefix + short + "-" + suffix
+        }
         return sessionPrefix + panelId.uuidString.prefix(8).lowercased()
     }
 
@@ -49,22 +63,40 @@ class TmuxSessionManager {
     /// Uses `tmux new-session -A` which attaches if the session already exists
     /// and creates it if it does not.  Also disables the tmux status bar since
     /// Ghostty handles all chrome.
-    func buildCommand(for panelId: UUID, workingDirectory: String? = nil) -> String {
-        let name = sessionName(for: panelId)
+    func buildCommand(for panelId: UUID, workingDirectory: String? = nil, workspaceTitle: String? = nil) -> String {
+        // If a session name was already registered (e.g. from session restore), reuse it
+        // so we reattach to the existing tmux session instead of creating a new one.
         lock.lock()
-        panelSessions[panelId] = name
+        let existingName = panelSessions[panelId]
         lock.unlock()
+
+        let name: String
+        if let existingName, !existingName.isEmpty {
+            name = existingName
+        } else {
+            name = sessionName(for: panelId, workspaceTitle: workspaceTitle)
+            lock.lock()
+            panelSessions[panelId] = name
+            lock.unlock()
+        }
 
         // -A: attach if exists, create if not
         // -s: session name
         // We don't use -d (detached) because Ghostty will be the client.
         // "set status off" hides the tmux status bar.
-        var cmd = "\(Self.tmuxPath) new-session -A -s \(name)"
+        // Force UTF-8 with -u flag to avoid encoding issues in web terminal
+        var cmd = "\(Self.tmuxPath) -u new-session -A -s \(name)"
         if let dir = workingDirectory, !dir.isEmpty {
             cmd += " -c '\(dir.replacingOccurrences(of: "'", with: "'\\''"))'"
         }
         // Hide tmux status bar — Ghostty provides its own chrome.
         cmd += " \\; set status off"
+        // Set the correct CMUX_SURFACE_ID/CMUX_PANEL_ID for this specific panel
+        // so claude-hook notifications highlight the right pane.
+        // We use tmux setenv (for future shells) AND send-keys to export in the current shell.
+        cmd += " \\; setenv CMUX_SURFACE_ID \(panelId.uuidString)"
+        cmd += " \\; setenv CMUX_PANEL_ID \(panelId.uuidString)"
+        cmd += " \\; send-keys 'export CMUX_SURFACE_ID=\(panelId.uuidString) CMUX_PANEL_ID=\(panelId.uuidString)' Enter"
         return cmd
     }
 
@@ -79,7 +111,7 @@ class TmuxSessionManager {
 
     /// Build attach command by session name directly (for web UI).
     func buildAttachCommandByName(_ sessionName: String) -> String {
-        return "TERM=xterm-256color \(Self.tmuxPath) attach -t \(sessionName)"
+        return "TERM=xterm-256color \(Self.tmuxPath) -u attach -t \(sessionName)"
     }
 
     // MARK: - Registration
@@ -196,7 +228,8 @@ class TmuxSessionManager {
 // MARK: - TmuxSession Model
 
 /// Represents a single tmux session as reported by `tmux list-sessions`.
-struct TmuxSession {
+struct TmuxSession: Identifiable {
+    var id: String { name }
     let name: String
     let created: Date
     let windowCount: Int

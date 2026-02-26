@@ -17,6 +17,8 @@ class PTYSession {
     private var readSource: DispatchSourceRead?
     private weak var webSocketSession: WebSocketSession?
     private var isTerminated = false
+    /// Buffer for incomplete UTF-8 sequences across reads
+    private var utf8Buffer = Data()
 
     /// When the WebSocket disconnects, this is set to the current date.
     /// The session is kept alive for a grace period so the client can reconnect.
@@ -59,11 +61,13 @@ class PTYSession {
 
             if let tmuxSession {
                 // Attach to an existing tmux session for 1:1 mirroring with native app.
+                // -u: force UTF-8 (fixes box-drawing chars in Claude Code UI)
                 let cTmux = strdup("tmux")
+                let cDashU = strdup("-u")
                 let cAttach = strdup("attach")
                 let cFlag = strdup("-t")
                 let cName = strdup(tmuxSession)
-                let argv: [UnsafeMutablePointer<CChar>?] = [cTmux, cAttach, cFlag, cName, nil]
+                let argv: [UnsafeMutablePointer<CChar>?] = [cTmux, cDashU, cAttach, cFlag, cName, nil]
                 argv.withUnsafeBufferPointer { buf in
                     _ = execv(TmuxSessionManager.tmuxPath, buf.baseAddress!)
                 }
@@ -111,21 +115,52 @@ class PTYSession {
             var buffer = [UInt8](repeating: 0, count: 16384)
             let bytesRead = read(self.masterFd, &buffer, buffer.count)
             if bytesRead > 0 {
-                let data = Data(buffer[0..<bytesRead])
-                if let str = String(data: data, encoding: .utf8) {
-                    ws.writeText(str)
-                } else {
-                    // Fallback: encode each byte as its Latin-1 code point.
-                    let latin1 = data.map { String(UnicodeScalar($0)) }.joined()
-                    ws.writeText(latin1)
+                // Prepend any leftover bytes from previous read
+                self.utf8Buffer.append(contentsOf: buffer[0..<bytesRead])
+
+                // Find the last valid UTF-8 boundary
+                let data = self.utf8Buffer
+                var validEnd = data.count
+                // Walk back from the end to find a complete UTF-8 sequence
+                // UTF-8 continuation bytes start with 10xxxxxx (0x80-0xBF)
+                if validEnd > 0 {
+                    var i = validEnd - 1
+                    // Skip continuation bytes
+                    while i > max(0, validEnd - 4) && data[i] & 0xC0 == 0x80 {
+                        i -= 1
+                    }
+                    // Check if the lead byte at i expects more continuation bytes than we have
+                    let lead = data[i]
+                    let expectedLen: Int
+                    if lead & 0x80 == 0 { expectedLen = 1 }
+                    else if lead & 0xE0 == 0xC0 { expectedLen = 2 }
+                    else if lead & 0xF0 == 0xE0 { expectedLen = 3 }
+                    else if lead & 0xF8 == 0xF0 { expectedLen = 4 }
+                    else { expectedLen = 1 } // invalid lead byte, consume it
+                    let available = validEnd - i
+                    if available < expectedLen {
+                        validEnd = i // don't send the incomplete sequence
+                    }
+                }
+
+                if validEnd > 0 {
+                    let validData = data[0..<validEnd]
+                    if let str = String(data: validData, encoding: .utf8) {
+                        ws.writeText(str)
+                    } else {
+                        // Truly invalid bytes — send as replacement characters
+                        ws.writeText(String(repeating: "\u{FFFD}", count: validData.count))
+                    }
+                    self.utf8Buffer = Data(data[validEnd...])
                 }
             } else if bytesRead == 0 || (bytesRead < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
                 ws.writeText("\r\n[Process exited]\r\n")
             }
         }
-        source.setCancelHandler { [weak self] in
-            guard let self else { return }
-            close(self.masterFd)
+        source.setCancelHandler {
+            // Do NOT close the fd here — the fd belongs to the PTYSession lifecycle
+            // and is closed in terminate(). Closing here caused reattach() to read
+            // from a closed fd after detach().
         }
         source.resume()
         self.readSource = source
@@ -157,12 +192,29 @@ class PTYSession {
             var buffer = [UInt8](repeating: 0, count: 16384)
             let bytesRead = read(self.masterFd, &buffer, buffer.count)
             if bytesRead > 0 {
-                let data = Data(buffer[0..<bytesRead])
-                if let str = String(data: data, encoding: .utf8) {
-                    ws.writeText(str)
-                } else {
-                    let latin1 = data.map { String(UnicodeScalar($0)) }.joined()
-                    ws.writeText(latin1)
+                self.utf8Buffer.append(contentsOf: buffer[0..<bytesRead])
+                let data = self.utf8Buffer
+                var validEnd = data.count
+                if validEnd > 0 {
+                    var i = validEnd - 1
+                    while i > max(0, validEnd - 4) && data[i] & 0xC0 == 0x80 { i -= 1 }
+                    let lead = data[i]
+                    let expectedLen: Int
+                    if lead & 0x80 == 0 { expectedLen = 1 }
+                    else if lead & 0xE0 == 0xC0 { expectedLen = 2 }
+                    else if lead & 0xF0 == 0xE0 { expectedLen = 3 }
+                    else if lead & 0xF8 == 0xF0 { expectedLen = 4 }
+                    else { expectedLen = 1 }
+                    if (validEnd - i) < expectedLen { validEnd = i }
+                }
+                if validEnd > 0 {
+                    let validData = data[0..<validEnd]
+                    if let str = String(data: validData, encoding: .utf8) {
+                        ws.writeText(str)
+                    } else {
+                        ws.writeText(String(repeating: "\u{FFFD}", count: validData.count))
+                    }
+                    self.utf8Buffer = Data(data[validEnd...])
                 }
             } else if bytesRead == 0 || (bytesRead < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
                 ws.writeText("\r\n[Process exited]\r\n")
@@ -208,6 +260,7 @@ class PTYSession {
         isTerminated = true
         readSource?.cancel()
         readSource = nil
+        close(masterFd)
         kill(pid, SIGHUP)
         // Reap the child asynchronously so we don't block.
         DispatchQueue.global().async { [pid] in

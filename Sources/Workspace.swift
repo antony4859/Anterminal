@@ -155,6 +155,7 @@ extension Workspace {
             customTitle: customTitle,
             customColor: customColor,
             isPinned: isPinned,
+            isTmuxEnabled: isTmuxEnabled ? true : nil,
             currentDirectory: currentDirectory,
             focusedPanelId: focusedPanelId,
             layout: layout,
@@ -194,6 +195,7 @@ extension Workspace {
         setCustomTitle(snapshot.customTitle)
         setCustomColor(snapshot.customColor)
         isPinned = snapshot.isPinned
+        isTmuxEnabled = snapshot.isTmuxEnabled ?? false
 
         statusEntries = Dictionary(
             uniqueKeysWithValues: snapshot.statusEntries.map { entry in
@@ -233,7 +235,7 @@ extension Workspace {
         }
     }
 
-    private func sessionLayoutSnapshot(from node: ExternalTreeNode) -> SessionWorkspaceLayoutSnapshot {
+    func sessionLayoutSnapshot(from node: ExternalTreeNode) -> SessionWorkspaceLayoutSnapshot {
         switch node {
         case .pane(let pane):
             let panelIds = sessionPanelIDs(for: pane)
@@ -352,6 +354,7 @@ extension Workspace {
             gitBranch: branchSnapshot,
             listeningPorts: listeningPorts,
             ttyName: ttyName,
+            tmuxSessionName: TmuxSessionManager.shared.getSessionName(for: panelId),
             terminal: terminalSnapshot,
             browser: browserSnapshot
         )
@@ -546,6 +549,11 @@ extension Workspace {
             surfaceTTYNames[panelId] = ttyName
         } else {
             surfaceTTYNames.removeValue(forKey: panelId)
+        }
+
+        // Restore tmux session name so the terminal reattaches to the same session
+        if let tmuxName = snapshot.tmuxSessionName?.trimmingCharacters(in: .whitespacesAndNewlines), !tmuxName.isEmpty {
+            TmuxSessionManager.shared.registerSession(panelId: panelId, sessionName: tmuxName)
         }
 
         if let browserSnapshot = snapshot.browser,
