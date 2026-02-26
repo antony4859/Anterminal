@@ -93,10 +93,11 @@ class TmuxSessionManager {
         cmd += " \\; set status off"
         // Set the correct CMUX_SURFACE_ID/CMUX_PANEL_ID for this specific panel
         // so claude-hook notifications highlight the right pane.
-        // We use tmux setenv (for future shells) AND send-keys to export in the current shell.
+        // setenv updates the tmux session env; send-keys exports in the running shell
+        // then clears the screen so the user doesn't see the export command.
         cmd += " \\; setenv CMUX_SURFACE_ID \(panelId.uuidString)"
         cmd += " \\; setenv CMUX_PANEL_ID \(panelId.uuidString)"
-        cmd += " \\; send-keys 'export CMUX_SURFACE_ID=\(panelId.uuidString) CMUX_PANEL_ID=\(panelId.uuidString)' Enter"
+        cmd += " \\; send-keys 'export CMUX_SURFACE_ID=\(panelId.uuidString) CMUX_PANEL_ID=\(panelId.uuidString) && clear' Enter"
         return cmd
     }
 

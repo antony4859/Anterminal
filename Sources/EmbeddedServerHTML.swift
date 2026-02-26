@@ -431,6 +431,16 @@ enum EmbeddedServerHTML {
       flex-direction:column;
       overflow:hidden;
       min-width:0;
+      scrollbar-width:none;
+    }
+    .layout-pane::-webkit-scrollbar{display:none}
+    .layout-pane .xterm-viewport{overflow:hidden !important;scrollbar-width:none}
+    .layout-pane .xterm-viewport::-webkit-scrollbar{display:none}
+    .terminal-pane .xterm-viewport{overflow:hidden !important;scrollbar-width:none}
+    .terminal-pane .xterm-viewport::-webkit-scrollbar{display:none}
+    .split-pane .xterm-viewport{overflow:hidden !important;scrollbar-width:none}
+    .split-pane .xterm-viewport::-webkit-scrollbar{display:none}
+    /* end scrollbar hides */
       min-height:0;
     }
     .layout-pane .xterm{flex:1}
