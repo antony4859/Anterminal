@@ -33,6 +33,8 @@ enum EmbeddedServerHTML {
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1a1a2e">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%231a1a2e' width='100' height='100' rx='20'/><text y='68' x='50' text-anchor='middle' font-size='50' fill='%236366f1'>at</text></svg>">
     <title>anterminal</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.min.js"></script>
@@ -59,15 +61,25 @@ enum EmbeddedServerHTML {
       display:flex;flex-direction:column;
       border-right:1px solid rgba(255,255,255,0.06);
       z-index:100;
-      transition:transform .25s ease;
+      transition:transform .25s ease, margin-left .25s ease;
+      /* collapsed by default on desktop */
+      margin-left:-260px;
+      pointer-events:none;
     }
+    #sidebar.open{margin-left:0;pointer-events:auto}
     .sidebar-header{
       display:flex;align-items:center;justify-content:space-between;
       padding:12px 14px 8px;border-bottom:1px solid rgba(255,255,255,0.06);
     }
     .sidebar-header h1{font-size:15px;font-weight:700;color:#fff;letter-spacing:-.3px}
+    .sidebar-scroll{
+      flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;
+    }
+    .sidebar-scroll::-webkit-scrollbar{width:4px}
+    .sidebar-scroll::-webkit-scrollbar-track{background:transparent}
+    .sidebar-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
     #close-sidebar{
-      display:none;background:none;border:none;color:#888;font-size:20px;
+      display:block;background:none;border:none;color:#888;font-size:20px;
       cursor:pointer;width:32px;height:32px;border-radius:6px;
       line-height:32px;text-align:center;
     }
@@ -148,6 +160,16 @@ enum EmbeddedServerHTML {
     }
     .ws-row:hover .ws-close{opacity:1}
     .ws-row .ws-close:hover{background:rgba(255,255,255,0.1);color:#fff}
+    .ws-row .needs-input{
+      font-size:9px;font-weight:600;color:#fbbf24;
+      display:flex;align-items:center;gap:3px;margin-top:2px;
+    }
+    .ws-row .needs-input::before{
+      content:'';width:6px;height:6px;border-radius:50%;
+      background:#fbbf24;flex-shrink:0;animation:pulse 1.5s infinite;
+    }
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+    .ws-row.has-notification{border-left-color:#fbbf24}
 
     /* ---------- new workspace button area ---------- */
     .sidebar-footer{padding:8px;border-top:1px solid rgba(255,255,255,0.06)}
@@ -178,14 +200,20 @@ enum EmbeddedServerHTML {
       cursor:pointer;transition:background .12s;
       -webkit-tap-highlight-color:transparent;
     }
-    .tmux-item:hover{background:rgba(255,255,255,0.04)}
-    .tmux-item:active{background:rgba(255,255,255,0.07)}
+    .tmux-item:hover{background:rgba(255,255,255,0.06)}
+    .tmux-item:hover .tmux-attach{opacity:1}
+    .tmux-item:active{background:rgba(255,255,255,0.09)}
     .tmux-name{
       font-size:11px;font-weight:600;color:#ccc;
       font-family:'SF Mono','Menlo','Consolas',monospace;
       display:block;
     }
     .tmux-meta{font-size:9px;color:rgba(255,255,255,0.3);display:block;margin-top:1px}
+    .tmux-item-row{display:flex;align-items:center;justify-content:space-between}
+    .tmux-attach{
+      font-size:9px;font-weight:600;color:#6366f1;opacity:0;
+      transition:opacity .12s;flex-shrink:0;
+    }
 
     /* ---------- collapsible sidebar sections ---------- */
     .sidebar-section-header{
@@ -199,7 +227,7 @@ enum EmbeddedServerHTML {
     .sidebar-section-header.collapsed .chevron{transform:rotate(-90deg)}
     .sidebar-section-body{overflow:hidden}
     .sidebar-section-body.collapsed{display:none}
-    #workspaces-section{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+    #workspaces-section{display:flex;flex-direction:column;min-height:0;flex-shrink:0}
 
     /* ---------- Claude Code session items ---------- */
     .cc-item{
@@ -236,7 +264,7 @@ enum EmbeddedServerHTML {
       padding:0 8px;
     }
     #toggle-sidebar{
-      display:none;background:none;border:none;color:#e0e0e0;
+      display:block;background:none;border:none;color:#e0e0e0;
       font-size:16px;cursor:pointer;width:32px;height:32px;
       border-radius:6px;text-align:center;line-height:32px;flex-shrink:0;
     }
@@ -341,6 +369,36 @@ enum EmbeddedServerHTML {
     #status-indicator.disconnected .status-dot{background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.4)}
     #status-indicator.disconnected{color:rgba(255,255,255,0.45)}
 
+    /* ---------- extra keys toolbar (mobile) ---------- */
+    #extra-keys{
+      display:none;
+      background:rgba(20,20,38,0.95);
+      border-top:1px solid rgba(255,255,255,0.08);
+      padding:4px 6px;gap:3px;
+      flex-wrap:wrap;align-items:center;
+      flex-shrink:0;
+    }
+    #extra-keys .ekey{
+      min-width:38px;height:34px;padding:0 7px;
+      background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);
+      border-radius:5px;color:#fff;font-size:12px;font-weight:700;
+      cursor:pointer;user-select:none;-webkit-user-select:none;
+      display:flex;align-items:center;justify-content:center;
+      transition:background .1s,border-color .1s;
+      -webkit-tap-highlight-color:transparent;
+      font-family:'SF Mono','Menlo','Consolas',monospace;
+      box-shadow:0 1px 2px rgba(0,0,0,0.2);
+    }
+    #extra-keys .ekey:active{background:rgba(99,102,241,0.4);border-color:rgba(99,102,241,0.6);color:#fff}
+    #extra-keys .ekey.sticky{background:rgba(99,102,241,0.35);border-color:#818cf8;color:#c7d2fe;box-shadow:0 0 6px rgba(99,102,241,0.3)}
+    #extra-keys .ekey.arrow{min-width:34px;font-size:13px;padding:0 5px}
+    #extra-keys .ekey-sep{width:1px;height:22px;background:rgba(255,255,255,0.08);flex-shrink:0}
+    #extra-keys .ekey-font{font-size:12px;min-width:32px}
+    @media(pointer:coarse){
+      #extra-keys{display:flex}
+      #extra-keys .ekey{height:38px;min-width:38px}
+    }
+
     /* ---------- terminal container ---------- */
     #terminal-container{flex:1;position:relative;overflow:hidden}
     .terminal-pane{
@@ -431,18 +489,14 @@ enum EmbeddedServerHTML {
       flex-direction:column;
       overflow:hidden;
       min-width:0;
+      min-height:0;
       scrollbar-width:none;
     }
     .layout-pane::-webkit-scrollbar{display:none}
-    .layout-pane .xterm-viewport{overflow:hidden !important;scrollbar-width:none}
-    .layout-pane .xterm-viewport::-webkit-scrollbar{display:none}
-    .terminal-pane .xterm-viewport{overflow:hidden !important;scrollbar-width:none}
-    .terminal-pane .xterm-viewport::-webkit-scrollbar{display:none}
-    .split-pane .xterm-viewport{overflow:hidden !important;scrollbar-width:none}
-    .split-pane .xterm-viewport::-webkit-scrollbar{display:none}
+    /* hide ALL xterm scrollbars globally */
+    .xterm-viewport{overflow-y:hidden !important;scrollbar-width:none !important}
+    .xterm-viewport::-webkit-scrollbar{display:none !important;width:0 !important}
     /* end scrollbar hides */
-      min-height:0;
-    }
     .layout-pane .xterm{flex:1}
     .layout-pane .xterm-viewport,
     .layout-pane .xterm-screen{width:100%!important;height:100%!important}
@@ -532,29 +586,75 @@ enum EmbeddedServerHTML {
 
     /* ---------- mobile responsive ---------- */
     @media(max-width:767px){
+      body,html{touch-action:manipulation;overflow:hidden}
+      #main{display:flex;flex-direction:column;height:100vh;height:100dvh}
+      #toolbar{flex-shrink:0}
+      #extra-keys{display:flex;flex-shrink:0}
+      #terminal-container{flex:1;position:relative;overflow:hidden}
+      .terminal-pane{padding:0!important;margin:0!important}
       #sidebar{
         position:fixed;top:0;left:0;bottom:0;
+        margin-left:0;
         transform:translateX(-100%);
         box-shadow:4px 0 24px rgba(0,0,0,.5);
         width:280px;min-width:280px;
+        pointer-events:none;
+        z-index:100;
       }
-      #sidebar.open{transform:translateX(0)}
-      #close-sidebar{display:block}
-      #toggle-sidebar{display:block}
+      #sidebar.open{transform:translateX(0);pointer-events:auto}
       #sidebar-backdrop{
-        display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+        position:fixed;inset:0;
         background:rgba(0,0,0,.5);z-index:99;
+        opacity:0;pointer-events:none;
+        transition:opacity .25s ease;
       }
-      #sidebar-backdrop.visible{display:block}
-      #terminal-container{position:absolute;top:0;left:0;right:0;bottom:0}
-      .terminal-pane{padding:0!important;margin:0!important}
-      .notif-dropdown{width:calc(100vw - 16px);right:0}
+      #sidebar-backdrop.visible{opacity:1;pointer-events:auto}
+      .notif-dropdown{width:calc(100vw - 16px);right:0;max-height:60vh}
+      /* No splits on mobile — single full-screen terminal only */
     }
 
-    /* touch: make everything 44px minimum */
+    /* ---------- touch device optimizations ---------- */
     @media(pointer:coarse){
+      /* toolbar */
+      #toolbar{height:48px;min-height:48px}
+      #toggle-sidebar{width:44px;height:44px;min-width:44px;font-size:18px;line-height:44px}
+      .notif-bell-btn{width:44px;height:44px}
+      .settings-gear-btn{width:44px;height:44px}
+
+      /* tab bar */
+      .term-tab{padding:0 14px;font-size:13px}
+      .tab-close{width:24px;height:24px}
+
+      /* sidebar */
       .ws-row{min-height:44px;padding:10px 10px 10px 0}
-      .term-tab{padding:0 12px}
+      .sidebar-section-header{padding:12px 12px;min-height:44px;font-size:11px}
+      .sidebar-section-header:active{background:rgba(255,255,255,0.06)}
+      .sidebar-section-header .chevron{font-size:12px}
+      .tmux-item{min-height:44px;padding:10px}
+      .tmux-item:active{background:rgba(255,255,255,0.09)}
+      .cc-item{min-height:44px;padding:10px}
+      .ws-close{width:32px;height:32px}
+
+      /* notifications */
+      .notif-item{padding:14px;min-height:44px}
+      .notif-item .notif-title{font-size:13px}
+      .notif-item .notif-body{font-size:12px;line-height:1.4}
+      .notif-item .notif-time{font-size:11px}
+
+      /* dividers */
+      .split-divider{width:12px}
+      .split-divider::after{height:44px;left:-8px;right:-8px}
+      .split-divider:active{background:rgba(99,102,241,0.4)}
+      .layout-divider.v{width:10px;min-width:10px}
+      .layout-divider.h{height:10px;min-height:10px}
+      .layout-divider.v:active,.layout-divider.h:active{background:rgba(99,102,241,0.3)}
+
+      /* buttons */
+      .new-ws-btn{min-height:44px;font-size:13px}
+      .split-zoom-btn{width:36px;height:36px;font-size:16px}
+
+      /* settings */
+      .settings-panel{max-height:calc(100vh - 80px);overflow-y:auto;-webkit-overflow-scrolling:touch}
     }
     </style>
     </head>
@@ -575,11 +675,12 @@ enum EmbeddedServerHTML {
           <h1>anterminal</h1>
           <button id="close-sidebar" onclick="app.closeSidebar()">&times;</button>
         </div>
+        <div class="sidebar-scroll">
         <div class="sidebar-section" id="workspaces-section">
           <div class="sidebar-section-header" onclick="app.toggleSection('workspaces')">
             Workspaces <span class="chevron">&#9660;</span>
           </div>
-          <div class="sidebar-section-body" id="workspace-list" style="flex:1;overflow-y:auto;padding:6px 8px;-webkit-overflow-scrolling:touch"></div>
+          <div class="sidebar-section-body" id="workspace-list" style="padding:6px 8px"></div>
         </div>
         <div class="sidebar-section" id="tmux-section" style="display:none">
           <div class="sidebar-section-header" onclick="app.toggleSection('tmux')">
@@ -593,6 +694,7 @@ enum EmbeddedServerHTML {
             Claude Code Sessions <span class="chevron">&#9660;</span>
           </div>
           <div class="sidebar-section-body" id="cc-sessions"></div>
+        </div>
         </div>
         <div class="sidebar-footer">
           <div class="new-ws-btn-group">
@@ -628,6 +730,25 @@ enum EmbeddedServerHTML {
             <div>Select a workspace to open a terminal</div>
             <div class="hint">or press "+ New Workspace"</div>
           </div>
+        </div>
+        <div id="extra-keys">
+          <button class="ekey" data-mod="ctrl">Ctrl</button>
+          <button class="ekey" data-mod="alt">Alt</button>
+          <button class="ekey" data-key="tab">Tab</button>
+          <button class="ekey" data-key="esc">Esc</button>
+          <span class="ekey-sep"></span>
+          <button class="ekey arrow" data-key="up">&#9650;</button>
+          <button class="ekey arrow" data-key="down">&#9660;</button>
+          <button class="ekey arrow" data-key="left">&#9664;</button>
+          <button class="ekey arrow" data-key="right">&#9654;</button>
+          <span class="ekey-sep"></span>
+          <button class="ekey" data-char="|">|</button>
+          <button class="ekey" data-char="~">~</button>
+          <button class="ekey" data-char="/">/</button>
+          <button class="ekey" data-char="-">-</button>
+          <span class="ekey-sep"></span>
+          <button class="ekey ekey-font" onclick="app.changeFontSize(-1)">A&#8722;</button>
+          <button class="ekey ekey-font" onclick="app.changeFontSize(1)">A+</button>
         </div>
       </main>
     </div>
@@ -700,6 +821,8 @@ enum EmbeddedServerHTML {
         this.terminal.open(this.containerEl);
         var self = this;
         requestAnimationFrame(function(){ self.fitAddon.fit(); });
+        setTimeout(function(){ try { self.fitAddon.fit(); } catch(e){} }, 300);
+        setTimeout(function(){ try { self.fitAddon.fit(); } catch(e){} }, 1000);
         this.connect();
     };
 
@@ -707,6 +830,8 @@ enum EmbeddedServerHTML {
         this.terminal.open(el);
         var self = this;
         requestAnimationFrame(function(){ self.fitAddon.fit(); });
+        setTimeout(function(){ try { self.fitAddon.fit(); } catch(e){} }, 300);
+        setTimeout(function(){ try { self.fitAddon.fit(); } catch(e){} }, 1000);
         this.connect();
     };
 
@@ -1083,7 +1208,9 @@ enum EmbeddedServerHTML {
             var container = document.createElement('div');
             container.className = 'layout-split';
             container.style.display = 'flex';
-            container.style.flexDirection = split.orientation === 'vertical' ? 'column' : 'row';
+            // On mobile (narrow screens), always stack vertically
+            var isMobile = window.innerWidth <= 767;
+            container.style.flexDirection = isMobile ? 'column' : (split.orientation === 'vertical' ? 'column' : 'row');
             container.style.flex = '1';
             container.style.height = '100%';
             parentEl.appendChild(container);
@@ -1091,7 +1218,7 @@ enum EmbeddedServerHTML {
             // First child wrapper
             var divPos = (typeof split.dividerPosition === 'number') ? split.dividerPosition : 0.5;
             var firstEl = document.createElement('div');
-            firstEl.style.flex = '0 0 ' + (divPos * 100) + '%';
+            firstEl.style.flex = isMobile ? '1' : ('0 0 ' + (divPos * 100) + '%');
             firstEl.style.display = 'flex';
             firstEl.style.overflow = 'hidden';
             container.appendChild(firstEl);
@@ -1099,7 +1226,7 @@ enum EmbeddedServerHTML {
 
             // Divider
             var divider = document.createElement('div');
-            divider.className = 'layout-divider ' + (split.orientation === 'vertical' ? 'h' : 'v');
+            divider.className = 'layout-divider ' + (isMobile ? 'h' : (split.orientation === 'vertical' ? 'h' : 'v'));
             container.appendChild(divider);
 
             // Second child wrapper
@@ -1206,9 +1333,13 @@ enum EmbeddedServerHTML {
         this._lastCCHtml = '';
         this.ccSessions = [];
         this._notifOpen = false;
+        this._stickyCtrl = false;
+        this._stickyAlt = false;
+        this._fontSize = 14;
     }
 
     App.prototype.init = function() {
+        this.setupExtraKeys();
         this.connectState();
         this.fetchWorkspaces();
         this.fetchNotifications();
@@ -1220,6 +1351,10 @@ enum EmbeddedServerHTML {
             } else if (self.activeTab) {
                 self.activeTab.fit();
             }
+        });
+        // Close sidebar on orientation change (mobile)
+        window.addEventListener('orientationchange', function() {
+            setTimeout(function(){ self.closeSidebarIfMobile(); }, 150);
         });
         // Close notification dropdown on outside click
         document.addEventListener('click', function(e) {
@@ -1234,6 +1369,21 @@ enum EmbeddedServerHTML {
             }
             self.closeNotifications();
         });
+        // Swipe-right from left edge to open sidebar (mobile)
+        var touchStartX = 0;
+        var touchStartY = 0;
+        document.addEventListener('touchstart', function(e) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        document.addEventListener('touchend', function(e) {
+            if (window.innerWidth > 767) return;
+            var dx = e.changedTouches[0].clientX - touchStartX;
+            var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+            if (touchStartX < 30 && dx > 60 && dy < 50) {
+                self.toggleSidebar();
+            }
+        }, { passive: true });
     };
 
     /* ---- state WebSocket ---- */
@@ -1282,6 +1432,9 @@ enum EmbeddedServerHTML {
                     self.notifications.unshift(msg);
                     self.updateNotifBadge();
                     self.renderNotifications();
+                    // Re-render workspaces to show "Needs input" indicator
+                    self._lastWorkspacesHtml = '';
+                    self.renderWorkspaces();
                 }
             } catch(err) {}
         };
@@ -1310,11 +1463,115 @@ enum EmbeddedServerHTML {
         var bd = document.getElementById('sidebar-backdrop');
         sb.classList.toggle('open');
         bd.classList.toggle('visible');
+        var self = this;
+        setTimeout(function(){ self.fitAllTerminals(); }, 280);
     };
 
     App.prototype.closeSidebar = function() {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('sidebar-backdrop').classList.remove('visible');
+        var self = this;
+        setTimeout(function(){ self.fitAllTerminals(); }, 280);
+    };
+
+    App.prototype.fitAllTerminals = function() {
+        var tabs = this.tabs;
+        for (var key in tabs) {
+            if (tabs[key] && tabs[key].fit) {
+                try { tabs[key].fit(); } catch(e) {}
+            }
+        }
+    };
+
+    /* ---- extra keys (mobile keyboard toolbar) ---- */
+    App.prototype.setupExtraKeys = function() {
+        var self = this;
+        var bar = document.getElementById('extra-keys');
+        if (!bar) return;
+        bar.querySelectorAll('.ekey').forEach(function(btn) {
+            btn.addEventListener('touchstart', function(e) { e.preventDefault(); });
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var mod = btn.getAttribute('data-mod');
+                var keyName = btn.getAttribute('data-key');
+                var ch = btn.getAttribute('data-char');
+                // Resolve key names to escape sequences
+                var ESC = String.fromCharCode(27);
+                var keyMap = {tab:'\t',esc:ESC,up:ESC+'[A',down:ESC+'[B',left:ESC+'[D',right:ESC+'[C'};
+                var seq = keyName ? keyMap[keyName] : null;
+                if (mod === 'ctrl') {
+                    self._stickyCtrl = !self._stickyCtrl;
+                    btn.classList.toggle('sticky', self._stickyCtrl);
+                    return;
+                }
+                if (mod === 'alt') {
+                    self._stickyAlt = !self._stickyAlt;
+                    btn.classList.toggle('sticky', self._stickyAlt);
+                    return;
+                }
+                var term = self._getActiveTerminal();
+                if (!term) return;
+                var toSend = seq || ch || '';
+                // Apply sticky modifiers
+                if (self._stickyCtrl && ch && ch.length === 1) {
+                    // Ctrl+letter: send char code - 64 (e.g. Ctrl+C = chr(3))
+                    var code = ch.toUpperCase().charCodeAt(0) - 64;
+                    if (code > 0 && code < 32) toSend = String.fromCharCode(code);
+                }
+                if (self._stickyAlt && (ch || seq)) {
+                    toSend = String.fromCharCode(27) + (ch || toSend);
+                }
+                if (term.ws && term.ws.readyState === 1) {
+                    term.ws.send(JSON.stringify({ type: 'input', data: toSend }));
+                }
+                // Clear sticky modifiers after use
+                self._stickyCtrl = false;
+                self._stickyAlt = false;
+                bar.querySelectorAll('[data-mod]').forEach(function(m) { m.classList.remove('sticky'); });
+                term.terminal.focus();
+            });
+        });
+    };
+
+    App.prototype._getActiveTerminal = function() {
+        if (this.activeSplit && this.activeSplit.tabs) {
+            // Return the last focused tab in the split, or the first
+            for (var i = 0; i < this.activeSplit.tabs.length; i++) {
+                if (this.activeSplit.tabs[i].terminal && this.activeSplit.tabs[i].terminal.textarea === document.activeElement) {
+                    return this.activeSplit.tabs[i];
+                }
+            }
+            return this.activeSplit.tabs[0] || null;
+        }
+        // Check layout views
+        if (this.activeLayout && this.activeLayout.tabs) {
+            for (var j = 0; j < this.activeLayout.tabs.length; j++) {
+                if (this.activeLayout.tabs[j].terminal && this.activeLayout.tabs[j].terminal.textarea === document.activeElement) {
+                    return this.activeLayout.tabs[j];
+                }
+            }
+            return this.activeLayout.tabs[0] || null;
+        }
+        return this.activeTab || null;
+    };
+
+    App.prototype.changeFontSize = function(delta) {
+        this._fontSize = Math.max(8, Math.min(24, this._fontSize + delta));
+        var size = this._fontSize;
+        // Apply to all terminals
+        var allTabs = this.tabs.slice();
+        if (this.activeSplit && this.activeSplit.tabs) {
+            allTabs = allTabs.concat(this.activeSplit.tabs);
+        }
+        if (this.activeLayout && this.activeLayout.tabs) {
+            allTabs = allTabs.concat(this.activeLayout.tabs);
+        }
+        for (var i = 0; i < allTabs.length; i++) {
+            if (allTabs[i].terminal) {
+                allTabs[i].terminal.options.fontSize = size;
+                try { allTabs[i].fitAddon.fit(); } catch(e) {}
+            }
+        }
     };
 
     /* ---- notifications ---- */
@@ -1368,13 +1625,61 @@ enum EmbeddedServerHTML {
                 else if (diff < 86400000) timeStr = Math.floor(diff / 3600000) + 'h ago';
                 else timeStr = Math.floor(diff / 86400000) + 'd ago';
             }
-            html += '<div class="notif-item' + unreadCls + '" data-notif-id="' + esc(n.id || '') + '">'
+            html += '<div class="notif-item' + unreadCls + '" data-notif-id="' + esc(n.id || '') + '" data-notif-tab="' + esc(n.tabId || '') + '" style="cursor:pointer">'
                 + '<div class="notif-title">' + esc(n.title || 'Notification') + '</div>'
                 + (n.body ? '<div class="notif-body">' + esc(n.body) + '</div>' : '')
                 + (timeStr ? '<div class="notif-time">' + timeStr + '</div>' : '')
                 + '</div>';
         }
         el.innerHTML = html;
+        // Click notification to navigate to the workspace
+        var self = this;
+        el.querySelectorAll('.notif-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+                var tabId = item.getAttribute('data-notif-tab');
+                if (tabId) self.navigateToWorkspace(tabId);
+            });
+        });
+    };
+
+    App.prototype.navigateToWorkspace = function(tabId) {
+        // Find the workspace matching this tabId and open it
+        for (var i = 0; i < this.workspaces.length; i++) {
+            var w = this.workspaces[i];
+            if (w.id === tabId) {
+                // Close notification dropdown and sidebar
+                this.closeNotifications();
+                this.closeSidebarIfMobile();
+
+                var tmuxPanels = (w.panels || []).filter(function(p){ return !!p.tmuxSession; });
+                var isMobile = window.innerWidth <= 767;
+
+                // On mobile: always open first panel as single full-screen tab (no splits)
+                if (isMobile) {
+                    var firstTmux = tmuxPanels.length > 0 ? tmuxPanels[0].tmuxSession : null;
+                    this.openTerminal({ id: w.id, directory: w.directory, title: w.title, tmuxSession: firstTmux });
+                    return;
+                }
+
+                // Desktop: If workspace has a layout tree, use LayoutView
+                if (w.layout && w.layout.type) {
+                    this.openLayoutView(w.id, w.title, w.layout, w.panels || []);
+                    return;
+                }
+
+                // Desktop: if workspace has multiple tmux panels but no layout, use flat SplitView
+                if (tmuxPanels.length > 1) {
+                    var pNames = [];
+                    for (var j = 0; j < tmuxPanels.length; j++) pNames.push(tmuxPanels[j].tmuxSession);
+                    this.openSplitView(w.id, w.directory, w.title, pNames);
+                    return;
+                }
+
+                var tmux = tmuxPanels.length > 0 ? tmuxPanels[0].tmuxSession : null;
+                this.openTerminal({ id: w.id, directory: w.directory, title: w.title, tmuxSession: tmux });
+                return;
+            }
+        }
     };
 
     App.prototype.markAllRead = function() {
@@ -1448,8 +1753,19 @@ enum EmbeddedServerHTML {
             // Close button (shows on hover)
             topLine += '<button class="ws-close" data-close-ws="' + esc(w.id) + '" title="Close">&times;</button>';
 
-            // Meta line: panel count
+            // Check if this workspace has unread notifications
+            var hasNotif = false;
+            for (var ni = 0; ni < self.notifications.length; ni++) {
+                if (self.notifications[ni].tabId === w.id && !self.notifications[ni].isRead) {
+                    hasNotif = true; break;
+                }
+            }
+
+            // Meta line: panel count + notification indicator
             var metaLine = '<span class="panel-count">' + w.panelCount + ' panel' + (w.panelCount !== 1 ? 's' : '') + '</span>';
+            if (hasNotif) {
+                metaLine += '<span class="needs-input">Needs input</span>';
+            }
 
             var firstTmux = tmuxPanels.length > 0 ? tmuxPanels[0] : null;
             var tmuxAttr = firstTmux ? ' data-tmux="' + esc(firstTmux.tmuxSession) + '"' : '';
@@ -1464,7 +1780,8 @@ enum EmbeddedServerHTML {
                 panelsJson = ' data-panels="' + esc(pNames.join(',')) + '"';
             }
 
-            var rowHtml = '<div class="ws-row' + sel + '" data-id="' + esc(w.id) + '" data-dir="' + esc(w.directory) + '" data-title="' + esc(w.title) + '"' + tmuxAttr + panelCountAttr + panelsJson + '>'
+            var notifCls = hasNotif ? ' has-notification' : '';
+            var rowHtml = '<div class="ws-row' + sel + notifCls + '" data-id="' + esc(w.id) + '" data-dir="' + esc(w.directory) + '" data-title="' + esc(w.title) + '"' + tmuxAttr + panelCountAttr + panelsJson + '>'
                 + '<div class="ws-left">'
                 + '<div class="ws-top-line">' + topLine + '</div>'
                 + '<div class="ws-dir">' + esc(dirDisplay) + '</div>'
@@ -1499,20 +1816,27 @@ enum EmbeddedServerHTML {
                 var title = row.getAttribute('data-title');
                 var tmux = row.getAttribute('data-tmux') || null;
                 var panels = row.getAttribute('data-panels') || null;
+                var isMobile = window.innerWidth <= 767;
 
-                // Look up full workspace data for layout tree
+                // On mobile: always open first panel as single full-screen tab (no splits)
+                if (isMobile) {
+                    self.openTerminal({ id: id, directory: dir, title: title, tmuxSession: tmux });
+                    return;
+                }
+
+                // Desktop: Look up full workspace data for layout tree
                 var wsData = null;
                 for (var wi = 0; wi < self.workspaces.length; wi++) {
                     if (self.workspaces[wi].id === id) { wsData = self.workspaces[wi]; break; }
                 }
 
-                // If workspace has a layout tree, use recursive LayoutView
+                // Desktop: If workspace has a layout tree, use recursive LayoutView
                 if (wsData && wsData.layout && wsData.layout.type) {
                     self.openLayoutView(id, title, wsData.layout, wsData.panels || []);
                     return;
                 }
 
-                // Fallback: if workspace has multiple tmux panels but no layout, use flat SplitView
+                // Desktop: if workspace has multiple tmux panels but no layout, use flat SplitView
                 if (panels) {
                     var panelNames = panels.split(',');
                     if (panelNames.length > 1) {
@@ -1858,7 +2182,7 @@ enum EmbeddedServerHTML {
     };
 
     App.prototype.closeSidebarIfMobile = function() {
-        if (window.innerWidth < 768) this.closeSidebar();
+        if (window.innerWidth <= 767) this.closeSidebar();
     };
 
     /* ---- tmux sessions ---- */
@@ -1888,7 +2212,10 @@ enum EmbeddedServerHTML {
         for (var i = 0; i < sessions.length; i++) {
             var s = sessions[i];
             html += '<div class="tmux-item" data-tmux-name="' + esc(s.name) + '">'
+                + '<div class="tmux-item-row">'
                 + '<span class="tmux-name">' + esc(s.name) + '</span>'
+                + '<span class="tmux-attach">Attach</span>'
+                + '</div>'
                 + '<span class="tmux-meta">' + s.attached + ' attached &middot; ' + s.windowCount + ' win</span>'
                 + '</div>';
         }
@@ -2060,6 +2387,7 @@ enum EmbeddedServerHTML {
 
     App.prototype.resumeCCSession = function(projectPath) {
         var self = this;
+        this.closeSidebarIfMobile();
         fetch('/api/cc/resume', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -2118,6 +2446,10 @@ enum EmbeddedServerHTML {
     appInstance.loadTmuxSessions();
     // Refresh CC sessions every 30s
     setInterval(function(){ appInstance.fetchCCSessions(); }, 30000);
+    // Register PWA service worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(function(){});
+    }
     })();
     </script>
     </body>

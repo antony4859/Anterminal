@@ -1,22 +1,12 @@
-<h1 align="center">cmux</h1>
-<p align="center">A Ghostty-based macOS terminal with vertical tabs and notifications for AI coding agents</p>
+<h1 align="center">
+  <img src="./Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="anterminal icon" width="64" />
+  <br>
+  anterminal
+</h1>
+<p align="center">A macOS terminal with vertical tabs, notifications, and a remote web UI for AI coding agents.<br>Built on top of <a href="https://github.com/manaflow-ai/cmux">cmux</a> and powered by <a href="https://ghostty.org">Ghostty</a>.</p>
 
 <p align="center">
-  <a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
-    <img src="./docs/assets/macos-badge.png" alt="Download cmux for macOS" width="180" />
-  </a>
-</p>
-
-<p align="center">
-  English | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ko.md">한국어</a> | <a href="README.de.md">Deutsch</a> | <a href="README.es.md">Español</a> | <a href="README.fr.md">Français</a> | <a href="README.it.md">Italiano</a> | <a href="README.da.md">Dansk</a> | <a href="README.ja.md">日本語</a> | <a href="README.pl.md">Polski</a> | <a href="README.ru.md">Русский</a> | <a href="README.bs.md">Bosanski</a> | <a href="README.ar.md">العربية</a> | <a href="README.no.md">Norsk</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.th.md">ไทย</a> | <a href="README.tr.md">Türkçe</a>
-</p>
-
-<p align="center">
-  <img src="./docs/assets/main-first-image.png" alt="cmux screenshot" width="900" />
-</p>
-
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=i-WxO5YUTOs">▶ Demo video</a>
+  <img src="./docs/assets/main-first-image.png" alt="anterminal screenshot" width="900" />
 </p>
 
 ## Features
@@ -60,45 +50,23 @@ Sidebar shows git branch, linked PR status/number, working directory, listening 
 </tr>
 </table>
 
+- **Remote web UI** — Access your terminals from your phone or a VPS over Tailscale via the embedded HTTP/WebSocket server
 - **Scriptable** — CLI and socket API to create workspaces, split panes, send keystrokes, and automate the browser
-- **Native macOS app** — Built with Swift and AppKit, not Electron. Fast startup, low memory.
+- **Native macOS app** — Built on [cmux](https://github.com/manaflow-ai/cmux) with Swift and AppKit, not Electron. Fast startup, low memory.
 - **Ghostty compatible** — Reads your existing `~/.config/ghostty/config` for themes, fonts, and colors
-- **GPU-accelerated** — Powered by libghostty for smooth rendering
+- **GPU-accelerated** — Powered by libghostty via cmux for smooth rendering
 
-## Install
-
-### DMG (recommended)
-
-<a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
-  <img src="./docs/assets/macos-badge.png" alt="Download cmux for macOS" width="180" />
-</a>
-
-Open the `.dmg` and drag cmux to your Applications folder. cmux auto-updates via Sparkle, so you only need to download once.
-
-### Homebrew
-
-```bash
-brew tap manaflow-ai/cmux
-brew install --cask cmux
-```
-
-To update later:
-
-```bash
-brew upgrade --cask cmux
-```
-
-On first launch, macOS may ask you to confirm opening an app from an identified developer. Click **Open** to proceed.
-
-## Why cmux?
+## Why anterminal?
 
 I run a lot of Claude Code and Codex sessions in parallel. I was using Ghostty with a bunch of split panes, and relying on native macOS notifications to know when an agent needed me. But Claude Code's notification body is always just "Claude is waiting for your input" with no context, and with enough tabs open I couldn't even read the titles anymore.
 
-I tried a few coding orchestrators but most of them were Electron/Tauri apps and the performance bugged me. I also just prefer the terminal since GUI orchestrators lock you into their workflow. So I built cmux as a native macOS app in Swift/AppKit. It uses libghostty for terminal rendering and reads your existing Ghostty config for themes, fonts, and colors.
+I tried a few coding orchestrators but most of them were Electron/Tauri apps and the performance bugged me. I also just prefer the terminal since GUI orchestrators lock you into their workflow. anterminal is built on top of [cmux](https://github.com/manaflow-ai/cmux), a native macOS terminal in Swift/AppKit that uses libghostty for terminal rendering and reads your existing Ghostty config for themes, fonts, and colors.
 
 The main additions are the sidebar and notification system. The sidebar has vertical tabs that show git branch, linked PR status/number, working directory, listening ports, and the latest notification text for each workspace. The notification system picks up terminal sequences (OSC 9/99/777) and has a CLI (`cmux notify`) you can wire into agent hooks for Claude Code, OpenCode, etc. When an agent is waiting, its pane gets a blue ring and the tab lights up in the sidebar, so I can tell which one needs me across splits and tabs. Cmd+Shift+U jumps to the most recent unread.
 
 The in-app browser has a scriptable API ported from [agent-browser](https://github.com/vercel-labs/agent-browser). Agents can snapshot the accessibility tree, get element refs, click, fill forms, and evaluate JS. You can split a browser pane next to your terminal and have Claude Code interact with your dev server directly.
+
+The embedded web server lets me check on running agents from my phone over Tailscale — full interactive terminal sessions via xterm.js, workspace overview, and notifications, all from a browser.
 
 Everything is scriptable through the CLI and socket API — create workspaces/tabs, split panes, send keystrokes, open URLs in the browser.
 
@@ -188,39 +156,15 @@ Browser developer-tool shortcuts follow Safari defaults and are customizable in 
 | ⌘ ⇧ , | Reload configuration |
 | ⌘ Q | Quit |
 
-## Nightly Builds
+## Session restore
 
-[Download cmux NIGHTLY](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
-
-cmux NIGHTLY is a separate app with its own bundle ID, so it runs alongside the stable version. Built automatically from the latest `main` commit and auto-updates via its own Sparkle feed.
-
-## Session restore (current behavior)
-
-On relaunch, cmux currently restores app layout and metadata only:
+On relaunch, anterminal restores app layout and metadata:
 - Window/workspace/pane layout
 - Working directories
 - Terminal scrollback (best effort)
 - Browser URL and navigation history
 
-cmux does **not** restore live process state inside terminal apps. For example, active Claude Code/tmux/vim sessions are not resumed after restart yet.
-
-## Star History
-
-<a href="https://star-history.com/#manaflow-ai/cmux&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" width="600" />
- </picture>
-</a>
-
-## Community
-
-- [Discord](https://discord.gg/xsgFEVrWCZ)
-- [GitHub](https://github.com/manaflow-ai/cmux)
-- [X / Twitter](https://twitter.com/manaflowai)
-- [YouTube](https://www.youtube.com/channel/UCAa89_j-TWkrXfk9A3CbASw)
-- [LinkedIn](https://www.linkedin.com/company/manaflow-ai/)
+Live process state inside terminal apps (e.g., active Claude Code/tmux/vim sessions) is not resumed after restart yet.
 
 ## License
 

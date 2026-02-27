@@ -63,7 +63,7 @@ class TmuxSessionManager {
     /// Uses `tmux new-session -A` which attaches if the session already exists
     /// and creates it if it does not.  Also disables the tmux status bar since
     /// Ghostty handles all chrome.
-    func buildCommand(for panelId: UUID, workingDirectory: String? = nil, workspaceTitle: String? = nil) -> String {
+    func buildCommand(for panelId: UUID, workingDirectory: String? = nil, workspaceTitle: String? = nil, socketPath: String? = nil) -> String {
         // If a session name was already registered (e.g. from session restore), reuse it
         // so we reattach to the existing tmux session instead of creating a new one.
         lock.lock()
@@ -97,7 +97,11 @@ class TmuxSessionManager {
         // then clears the screen so the user doesn't see the export command.
         cmd += " \\; setenv CMUX_SURFACE_ID \(panelId.uuidString)"
         cmd += " \\; setenv CMUX_PANEL_ID \(panelId.uuidString)"
-        cmd += " \\; send-keys 'export CMUX_SURFACE_ID=\(panelId.uuidString) CMUX_PANEL_ID=\(panelId.uuidString) && clear' Enter"
+        // Set CMUX_SOCKET_PATH so hooks/CLI inside tmux connect to the correct socket
+        // (critical for Release/DMG builds where the socket is /tmp/cmux.sock)
+        let sock = socketPath ?? SocketControlSettings.socketPath()
+        cmd += " \\; setenv CMUX_SOCKET_PATH \(sock)"
+        cmd += " \\; send-keys 'export CMUX_SURFACE_ID=\(panelId.uuidString) CMUX_PANEL_ID=\(panelId.uuidString) CMUX_SOCKET_PATH=\(sock) && clear' Enter"
         return cmd
     }
 

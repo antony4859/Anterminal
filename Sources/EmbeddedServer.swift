@@ -111,6 +111,51 @@ class EmbeddedServer {
             .ok(.html(EmbeddedServerHTML.indexPage))
         }
 
+        // PWA manifest
+        server["/manifest.json"] = { _ in
+            let manifest = """
+            {
+              "name": "anterminal",
+              "short_name": "anterminal",
+              "description": "Terminal from anywhere",
+              "start_url": "/",
+              "display": "standalone",
+              "background_color": "#1a1a2e",
+              "theme_color": "#1a1a2e",
+              "orientation": "any",
+              "icons": [{
+                "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%231a1a2e' width='100' height='100' rx='20'/><text y='68' x='50' text-anchor='middle' font-size='50' fill='%236366f1'>at</text></svg>",
+                "sizes": "any",
+                "type": "image/svg+xml"
+              }]
+            }
+            """
+            let data = Data(manifest.utf8)
+            return .ok(.data(data, contentType: "application/json"))
+        }
+
+        // PWA service worker (minimal — caches shell for offline launch)
+        server["/sw.js"] = { _ in
+            let sw = """
+            const CACHE = 'anterminal-v1';
+            const SHELL = ['/'];
+            self.addEventListener('install', e => {
+              e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+              self.skipWaiting();
+            });
+            self.addEventListener('activate', e => {
+              e.waitUntil(self.clients.claim());
+            });
+            self.addEventListener('fetch', e => {
+              if (e.request.mode === 'navigate') {
+                e.respondWith(fetch(e.request).catch(() => caches.match('/')));
+              }
+            });
+            """
+            let data = Data(sw.utf8)
+            return .ok(.data(data, contentType: "application/javascript"))
+        }
+
         // Serve CSS with correct content type
         server["/style.css"] = { _ in
             let data = Data(EmbeddedServerHTML.styleCSS.utf8)
@@ -702,8 +747,6 @@ class EmbeddedServer {
     /// Forward a terminal notification to all connected WebSocket clients.
     /// Called from TerminalNotificationStore when a new notification is added.
     func forwardNotification(_ notification: TerminalNotification) {
-        guard !connectedClients.isEmpty else { return }
-
         let json: [String: Any] = [
             "type": "notification",
             "id": notification.id.uuidString,
@@ -717,11 +760,19 @@ class EmbeddedServer {
         guard let data = try? JSONSerialization.data(withJSONObject: json),
               let str = String(data: data, encoding: .utf8) else { return }
 
-        let clients = connectedClients  // capture on main thread
-        DispatchQueue.global(qos: .utility).async {
-            for client in clients {
-                client.writeText(str)
+        // connectedClients is modified on main, so read it on main too
+        let send = { [weak self] in
+            guard let clients = self?.connectedClients, !clients.isEmpty else { return }
+            DispatchQueue.global(qos: .utility).async {
+                for client in clients {
+                    client.writeText(str)
+                }
             }
+        }
+        if Thread.isMainThread {
+            send()
+        } else {
+            DispatchQueue.main.async { send() }
         }
     }
 
