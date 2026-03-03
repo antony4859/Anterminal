@@ -404,6 +404,20 @@ struct cmuxApp: App {
                     }
                 }
 
+                // New Tmux Workspace — terminals inside tmux for 1:1 web mirroring
+                Button(String(localized: "menu.file.newTmuxWorkspace", defaultValue: "New Tmux Workspace")) {
+                    if let appDelegate = AppDelegate.shared {
+                        // Inherit the current workspace's directory
+                        let currentDir = appDelegate.tabManager?.selectedWorkspace?.currentDirectory
+                        _ = appDelegate.addWorkspaceInPreferredMainWindow(
+                            workingDirectory: currentDir,
+                            isTmux: true,
+                            debugSource: "menu.newTmuxWorkspace"
+                        )
+                    }
+                }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+
                 splitCommandButton(title: String(localized: "menu.file.openFolder", defaultValue: "Open Folder…"), shortcut: openFolderMenuShortcut) {
                     let panel = NSOpenPanel()
                     panel.canChooseFiles = false
@@ -4350,6 +4364,13 @@ struct SettingsView: View {
         sidebarShowLog = true
         sidebarShowProgress = true
         sidebarShowMetadata = true
+        serverBridgeEnabled = ServerBridgeSettings.defaultEnabled
+        serverBridgeURL = ServerBridgeSettings.defaultURL
+        serverBridgeAutoConnect = ServerBridgeSettings.defaultAutoConnect
+        serverBridgeForwardNotifications = ServerBridgeSettings.defaultForwardNotifications
+        embeddedServerEnabled = EmbeddedServerSettings.defaultEnabled
+        embeddedServerPort = EmbeddedServerSettings.defaultPort
+        tmuxEnabled = EmbeddedServerSettings.defaultTmuxEnabled
         showOpenAccessConfirmation = false
         pendingOpenAccessMode = nil
         socketPasswordDraft = ""

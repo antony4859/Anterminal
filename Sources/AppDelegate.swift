@@ -4396,13 +4396,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         let workspace: Workspace
         if let workingDirectory {
-            workspace = context.tabManager.addWorkspace(workingDirectory: workingDirectory, select: true)
+            workspace = context.tabManager.addWorkspace(
+                workingDirectory: workingDirectory,
+                select: true,
+                isTmux: isTmux
+            )
         } else {
-            workspace = context.tabManager.addTab(select: true)
-        }
-        // MARK: - Tmux per-workspace
-        if isTmux {
-            workspace.isTmuxEnabled = true
+            workspace = context.tabManager.addTab(select: true, isTmux: isTmux)
         }
         #if DEBUG
         logWorkspaceCreationRouting(

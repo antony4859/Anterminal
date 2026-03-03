@@ -232,6 +232,7 @@ struct TitlebarControlsView: View {
     let onToggleSidebar: () -> Void
     let onToggleNotifications: () -> Void
     let onNewTab: () -> Void
+    let onNewTmuxTab: () -> Void
     @AppStorage("titlebarControlsStyle") private var styleRawValue = TitlebarControlsStyle.classic.rawValue
     @AppStorage(ShortcutHintDebugSettings.titlebarHintXKey) private var titlebarShortcutHintXOffset = ShortcutHintDebugSettings.defaultTitlebarHintX
     @AppStorage(ShortcutHintDebugSettings.titlebarHintYKey) private var titlebarShortcutHintYOffset = ShortcutHintDebugSettings.defaultTitlebarHintY
@@ -350,17 +351,35 @@ struct TitlebarControlsView: View {
             .accessibilityLabel(String(localized: "titlebar.notifications.accessibilityLabel", defaultValue: "Notifications"))
             .safeHelp(KeyboardShortcutSettings.Action.showNotifications.tooltip(String(localized: "titlebar.notifications.tooltip", defaultValue: "Show notifications")))
 
-            TitlebarControlButton(config: config, action: {
-                #if DEBUG
-                dlog("titlebar.newTab")
-                #endif
-                onNewTab()
-            }) {
+            Menu {
+                Button("New Workspace") {
+                    #if DEBUG
+                    dlog("titlebar.newTab")
+                    #endif
+                    onNewTab()
+                }
+                .keyboardShortcut("n", modifiers: .command)
+                Button("New Tmux Workspace") {
+                    #if DEBUG
+                    dlog("titlebar.newTmuxTab")
+                    #endif
+                    onNewTmuxTab()
+                }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+            } label: {
                 iconLabel(systemName: "plus", config: config)
+            } primaryAction: {
+                onNewTab()
             }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
             .accessibilityIdentifier("titlebarControl.newTab")
             .accessibilityLabel(String(localized: "titlebar.newWorkspace.accessibilityLabel", defaultValue: "New Workspace"))
-            .safeHelp(KeyboardShortcutSettings.Action.newTab.tooltip(String(localized: "titlebar.newWorkspace.tooltip", defaultValue: "New workspace")))
+            .safeHelp(
+                KeyboardShortcutSettings.Action.newTab.tooltip(
+                    String(localized: "titlebar.newWorkspace.tooltip", defaultValue: "New workspace (click for options)")
+                )
+            )
         }
 
         let paddedContent = content.padding(config.groupPadding)
@@ -714,6 +733,17 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         let toggleSidebar = { _ = AppDelegate.shared?.sidebarState?.toggle() }
         let toggleNotifications: () -> Void = { _ = AppDelegate.shared?.toggleNotificationsPopover(animated: true) }
         let newTab = { _ = AppDelegate.shared?.tabManager?.addTab() }
+        let newTmuxTab: () -> Void = {
+            // Inherit current workspace's directory for the new tmux workspace
+            if let appDelegate = AppDelegate.shared {
+                let currentDir = appDelegate.tabManager?.selectedWorkspace?.currentDirectory
+                _ = appDelegate.addWorkspaceInPreferredMainWindow(
+                    workingDirectory: currentDir,
+                    isTmux: true,
+                    debugSource: "titlebar.newTmuxTab"
+                )
+            }
+        }
 
         hostingView = NonDraggableHostingView(
             rootView: TitlebarControlsView(
@@ -721,7 +751,8 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
                 viewModel: viewModel,
                 onToggleSidebar: toggleSidebar,
                 onToggleNotifications: toggleNotifications,
-                onNewTab: newTab
+                onNewTab: newTab,
+                onNewTmuxTab: newTmuxTab
             )
         )
 

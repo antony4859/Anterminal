@@ -1995,7 +1995,15 @@ struct ContentView: View {
                     anchorView: fullscreenControlsViewModel.notificationsAnchorView
                 )
             },
-            onNewTab: { tabManager.addTab() }
+            onNewTab: { tabManager.addTab() },
+            onNewTmuxTab: {
+                let currentDir = tabManager.selectedWorkspace?.currentDirectory
+                _ = AppDelegate.shared?.addWorkspaceInPreferredMainWindow(
+                    workingDirectory: currentDir,
+                    isTmux: true,
+                    debugSource: "fullscreen.newTmuxTab"
+                )
+            }
         )
     }
 
@@ -7012,7 +7020,6 @@ struct VerticalTabsSidebar: View {
             }
 
             SidebarServerFooter()
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("Sidebar")
