@@ -40,6 +40,7 @@
 			A5001250 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A5001251 /* Sentry */; };
 			B9000024A1B2C3D4E5F60719 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A5001251 /* Sentry */; };
 			A5001270 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = A5001271 /* PostHog */; };
+		ES000010 /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = ES000020 /* Swifter */; };
 			A5001303 /* SurfaceSearchOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001301 /* SurfaceSearchOverlay.swift */; };
 			A5008371 /* BrowserSearchOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5008370 /* BrowserSearchOverlay.swift */; };
 			A5008373 /* BrowserFindJavaScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5008372 /* BrowserFindJavaScript.swift */; };
@@ -92,9 +93,18 @@
 					F8000000A1B2C3D4E5F60718 /* SocketControlPasswordStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8000001A1B2C3D4E5F60718 /* SocketControlPasswordStoreTests.swift */; };
 					A5008381 /* BrowserFindJavaScriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5008380 /* BrowserFindJavaScriptTests.swift */; };
 					A5008383 /* CommandPaletteSearchEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5008382 /* CommandPaletteSearchEngineTests.swift */; };
+			SB000001 /* ServerBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = SB000011 /* ServerBridge.swift */; };
+		SB000002 /* ServerBridgeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = SB000012 /* ServerBridgeSettings.swift */; };
+		SB000003 /* ServerBridgeKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = SB000013 /* ServerBridgeKeychain.swift */; };
+		ES000001 /* EmbeddedServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = ES000011 /* EmbeddedServer.swift */; };
+		ES000002 /* EmbeddedServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = ES000012 /* EmbeddedServerSettings.swift */; };
+		ES000003 /* EmbeddedServerHTML.swift in Sources */ = {isa = PBXBuildFile; fileRef = ES000013 /* EmbeddedServerHTML.swift */; };
+		PT000001 /* PTYWebSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = PT000011 /* PTYWebSocket.swift */; };
+		TM000001 /* TmuxSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = TM000011 /* TmuxSessionManager.swift */; };
+		CC000001 /* ClaudeSessionScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000011 /* ClaudeSessionScanner.swift */; };
 		DA7A10CA710E000000000003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DA7A10CA710E000000000001 /* Localizable.xcstrings */; };
 		DA7A10CA710E000000000004 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DA7A10CA710E000000000002 /* InfoPlist.xcstrings */; };
-			/* End PBXBuildFile section */
+		/* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		A5001020 /* Embed Frameworks */ = {
@@ -233,9 +243,18 @@
 				F8000001A1B2C3D4E5F60718 /* SocketControlPasswordStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketControlPasswordStoreTests.swift; sourceTree = "<group>"; };
 				A5008380 /* BrowserFindJavaScriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserFindJavaScriptTests.swift; sourceTree = "<group>"; };
 				A5008382 /* CommandPaletteSearchEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteSearchEngineTests.swift; sourceTree = "<group>"; };
-					DA7A10CA710E000000000001 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+			SB000011 /* ServerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBridge.swift; sourceTree = "<group>"; };
+		SB000012 /* ServerBridgeSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBridgeSettings.swift; sourceTree = "<group>"; };
+		SB000013 /* ServerBridgeKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBridgeKeychain.swift; sourceTree = "<group>"; };
+		ES000011 /* EmbeddedServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedServer.swift; sourceTree = "<group>"; };
+		ES000012 /* EmbeddedServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedServerSettings.swift; sourceTree = "<group>"; };
+		ES000013 /* EmbeddedServerHTML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedServerHTML.swift; sourceTree = "<group>"; };
+		PT000011 /* PTYWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTYWebSocket.swift; sourceTree = "<group>"; };
+		TM000011 /* TmuxSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxSessionManager.swift; sourceTree = "<group>"; };
+		CC000011 /* ClaudeSessionScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSessionScanner.swift; sourceTree = "<group>"; };
+		DA7A10CA710E000000000001 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		DA7A10CA710E000000000002 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
-/* End PBXFileReference section */
+		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 			A5001030 /* Frameworks */ = {
@@ -246,6 +265,7 @@
 					A5001230 /* Sparkle in Frameworks */,
 					A5001250 /* Sentry in Frameworks */,
 					A5001270 /* PostHog in Frameworks */,
+					ES000010 /* Swifter in Frameworks */,
 					A5001290 /* MarkdownUI in Frameworks */,
 				);
 				runOnlyForDeploymentPostprocessing = 0;
@@ -363,6 +383,15 @@
 				A5001019 /* TerminalController.swift */,
 				A5001541 /* PortScanner.swift */,
 				A5001225 /* SocketControlSettings.swift */,
+				SB000011 /* ServerBridge.swift */,
+				SB000012 /* ServerBridgeSettings.swift */,
+				SB000013 /* ServerBridgeKeychain.swift */,
+				ES000011 /* EmbeddedServer.swift */,
+				ES000012 /* EmbeddedServerSettings.swift */,
+				ES000013 /* EmbeddedServerHTML.swift */,
+				PT000011 /* PTYWebSocket.swift */,
+				TM000011 /* TmuxSessionManager.swift */,
+				CC000011 /* ClaudeSessionScanner.swift */,
 				A5001600 /* SentryHelper.swift */,
 				A5001090 /* AppDelegate.swift */,
 				A5001091 /* NotificationsPage.swift */,
@@ -489,6 +518,7 @@
 					A5001251 /* Sentry */,
 					A5001271 /* PostHog */,
 					A5001261 /* Bonsplit */,
+					ES000020 /* Swifter */,
 					A5001291 /* MarkdownUI */,
 				);
 			name = GhosttyTabs;
@@ -591,6 +621,7 @@
 					A5001232 /* XCRemoteSwiftPackageReference "Sparkle" */,
 					A5001252 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 					A5001272 /* XCRemoteSwiftPackageReference "posthog-ios" */,
+					ES000030 /* XCRemoteSwiftPackageReference "swifter" */,
 					A5001292 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 					A5001260 /* XCLocalSwiftPackageReference "bonsplit" */,
 				);
@@ -630,6 +661,15 @@
 				A5001007 /* TerminalController.swift in Sources */,
 				A5001540 /* PortScanner.swift in Sources */,
 				A5001226 /* SocketControlSettings.swift in Sources */,
+				SB000001 /* ServerBridge.swift in Sources */,
+				SB000002 /* ServerBridgeSettings.swift in Sources */,
+				SB000003 /* ServerBridgeKeychain.swift in Sources */,
+				ES000001 /* EmbeddedServer.swift in Sources */,
+				ES000002 /* EmbeddedServerSettings.swift in Sources */,
+				ES000003 /* EmbeddedServerHTML.swift in Sources */,
+				PT000001 /* PTYWebSocket.swift in Sources */,
+				TM000001 /* TmuxSessionManager.swift in Sources */,
+				CC000001 /* ClaudeSessionScanner.swift in Sources */,
 				A5001601 /* SentryHelper.swift in Sources */,
 				A5001093 /* AppDelegate.swift in Sources */,
 				A5001094 /* NotificationsPage.swift in Sources */,
@@ -1016,6 +1056,14 @@
 				isa = XCLocalSwiftPackageReference;
 				relativePath = vendor/bonsplit;
 			};
+		ES000030 /* XCRemoteSwiftPackageReference "swifter" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/httpswift/swifter.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1039,6 +1087,11 @@
 				package = A5001260 /* XCLocalSwiftPackageReference "bonsplit" */;
 				productName = Bonsplit;
 			};
+		ES000020 /* Swifter */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ES000030 /* XCRemoteSwiftPackageReference "swifter" */;
+			productName = Swifter;
+		};
 			A5001291 /* MarkdownUI */ = {
 				isa = XCSwiftPackageProductDependency;
 				package = A5001292 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;

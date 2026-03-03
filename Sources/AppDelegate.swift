@@ -1731,6 +1731,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         installBrowserAddressBarFocusObservers()
         installShortcutMonitor()
         installShortcutDefaultsObserver()
+
+        // Start optional server bridge for remote monitoring / phone access
+        if ServerBridgeSettings.isEnabled() && ServerBridgeSettings.autoConnect() {
+            ServerBridge.shared.start()
+        }
+
+        // Start embedded web server for browser/phone access
+        if EmbeddedServerSettings.isEnabled() {
+            EmbeddedServer.shared.start()
+        }
+
         NSApp.servicesProvider = self
 #if DEBUG
         UpdateTestSupport.applyIfNeeded(to: updateController.viewModel)
@@ -1833,6 +1844,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         _ = saveSessionSnapshot(includeScrollback: true, removeWhenEmpty: false)
         stopSessionAutosaveTimer()
         stopSocketListenerHealthMonitor()
+        EmbeddedServer.shared.stop()
+        ServerBridge.shared.stop()
         TerminalController.shared.stop()
         VSCodeServeWebController.shared.stop()
         BrowserHistoryStore.shared.flushPendingSaves()
@@ -4347,6 +4360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func addWorkspaceInPreferredMainWindow(
         workingDirectory: String? = nil,
         shouldBringToFront: Bool = false,
+        isTmux: Bool = false,
         event: NSEvent? = nil,
         debugSource: String = "unspecified"
     ) -> UUID? {
@@ -4385,6 +4399,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             workspace = context.tabManager.addWorkspace(workingDirectory: workingDirectory, select: true)
         } else {
             workspace = context.tabManager.addTab(select: true)
+        }
+        // MARK: - Tmux per-workspace
+        if isTmux {
+            workspace.isTmuxEnabled = true
         }
         #if DEBUG
         logWorkspaceCreationRouting(

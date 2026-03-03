@@ -250,6 +250,7 @@ struct SessionPanelSnapshot: Codable, Sendable {
     var gitBranch: SessionGitBranchSnapshot?
     var listeningPorts: [Int]
     var ttyName: String?
+    var tmuxSessionName: String?
     var terminal: SessionTerminalPanelSnapshot?
     var browser: SessionBrowserPanelSnapshot?
     var markdown: SessionMarkdownPanelSnapshot?
@@ -331,6 +332,7 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var customTitle: String?
     var customColor: String?
     var isPinned: Bool
+    var isTmuxEnabled: Bool?
     var currentDirectory: String
     var focusedPanelId: UUID?
     var layout: SessionWorkspaceLayoutSnapshot

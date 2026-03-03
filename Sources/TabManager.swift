@@ -813,19 +813,25 @@ class TabManager: ObservableObject {
         workingDirectory overrideWorkingDirectory: String? = nil,
         select: Bool = true,
         eagerLoadTerminal: Bool = false,
-        placementOverride: NewWorkspacePlacement? = nil
+        placementOverride: NewWorkspacePlacement? = nil,
+        isTmux: Bool = false
     ) -> Workspace {
-        sentryBreadcrumb("workspace.create", data: ["tabCount": tabs.count + 1])
+        var isTmux = isTmux
+        if !isTmux && EmbeddedServerSettings.tmuxEnabled() && EmbeddedServerSettings.isEnabled() {
+            isTmux = true
+        }
+        sentryBreadcrumb("workspace.create", data: ["tabCount": tabs.count + 1, "tmux": isTmux])
         let explicitWorkingDirectory = normalizedWorkingDirectory(overrideWorkingDirectory)
         let workingDirectory = explicitWorkingDirectory ?? preferredWorkingDirectoryForNewTab()
         let inheritedConfig = inheritedTerminalConfigForNewWorkspace()
         let ordinal = Self.nextPortOrdinal
         Self.nextPortOrdinal += 1
         let newWorkspace = Workspace(
-            title: "Terminal \(tabs.count + 1)",
+            title: isTmux ? "tmux: Terminal \(tabs.count + 1)" : "Terminal \(tabs.count + 1)",
             workingDirectory: workingDirectory,
             portOrdinal: ordinal,
-            configTemplate: inheritedConfig
+            configTemplate: inheritedConfig,
+            isTmuxEnabled: isTmux
         )
         wireClosedBrowserTracking(for: newWorkspace)
         let insertIndex = newTabInsertIndex(placementOverride: placementOverride)
@@ -1042,8 +1048,8 @@ class TabManager: ObservableObject {
 
     // Keep addTab as convenience alias
     @discardableResult
-    func addTab(select: Bool = true, eagerLoadTerminal: Bool = false) -> Workspace {
-        addWorkspace(select: select, eagerLoadTerminal: eagerLoadTerminal)
+    func addTab(select: Bool = true, eagerLoadTerminal: Bool = false, isTmux: Bool = false) -> Workspace {
+        addWorkspace(select: select, eagerLoadTerminal: eagerLoadTerminal, isTmux: isTmux)
     }
 
     func terminalPanelForWorkspaceConfigInheritanceSource() -> TerminalPanel? {

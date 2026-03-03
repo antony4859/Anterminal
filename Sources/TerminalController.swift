@@ -411,6 +411,48 @@ class TerminalController {
         return false
     }
 
+    /// Check if `pid` is a descendant of a tmux server that manages anterminal sessions.
+    /// Tmux reparents shell processes, so the normal ancestor walk fails.
+    func isDescendantViaTmux(_ pid: pid_t) -> Bool {
+        var current = pid
+        for _ in 0..<128 {
+            if current <= 1 { break }
+            let parent = parentPid(of: current)
+            if parent == current || parent < 0 { break }
+            let name = processName(of: parent)
+            if name == "tmux" || name == "tmux: server" || name?.hasPrefix("tmux") == true {
+                let check = Process()
+                let pipe = Pipe()
+                check.executableURL = URL(fileURLWithPath: TmuxSessionManager.tmuxPath)
+                check.arguments = ["list-sessions", "-F", "#{session_name}"]
+                check.standardOutput = pipe
+                check.standardError = FileHandle.nullDevice
+                if let _ = try? check.run() {
+                    check.waitUntilExit()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let output = String(data: data, encoding: .utf8),
+                       output.contains("at-") {
+                        return true
+                    }
+                }
+            }
+            current = parent
+        }
+        return false
+    }
+
+    private func processName(of pid: pid_t) -> String? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0 else { return nil }
+        return withUnsafePointer(to: info.kp_proc.p_comm) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: 16) { cStr in
+                String(cString: cStr)
+            }
+        }
+    }
+
     /// Get the parent PID of a process using sysctl.
     private func parentPid(of pid: pid_t) -> pid_t {
         var info = kinfo_proc()
@@ -1235,7 +1277,7 @@ class TerminalController {
             // the peer can disconnect), falling back to live lookup.
             let pid = peerPid ?? getPeerPid(socket)
             if let pid {
-                guard isDescendant(pid) else {
+                guard isDescendant(pid) || isDescendantViaTmux(pid) else {
                     let msg = "ERROR: Access denied — only processes started inside cmux can connect\n"
                     msg.withCString { ptr in _ = write(socket, ptr, strlen(ptr)) }
                     return
@@ -1283,6 +1325,11 @@ class TerminalController {
                 writeSocketResponse(response, to: socket)
             }
         }
+    }
+
+    func handleBridgeCommand(_ commandJSON: String, completion: @escaping (String) -> Void) {
+        let response = processCommand(commandJSON)
+        completion(response)
     }
 
     private func processCommand(_ command: String) -> String {

@@ -833,6 +833,22 @@ final class TerminalNotificationStore: ObservableObject {
         let isFocusedSurface = surfaceId == nil || focusedSurfaceId == surfaceId
         let isFocusedPanel = isActiveTab && isFocusedSurface
         let isAppFocused = AppFocusState.isAppFocused()
+
+        let notification = TerminalNotification(
+            id: UUID(),
+            tabId: tabId,
+            surfaceId: surfaceId,
+            title: title,
+            subtitle: subtitle,
+            body: body,
+            createdAt: Date(),
+            isRead: false
+        )
+
+        // Always forward to embedded web server — the user may be viewing
+        // the session from the browser even when the native app is focused.
+        EmbeddedServer.shared.forwardNotification(notification)
+
         if isAppFocused && isFocusedPanel {
             if !idsToClear.isEmpty {
                 notifications = updated
@@ -846,16 +862,6 @@ final class TerminalNotificationStore: ObservableObject {
             AppDelegate.shared?.tabManager?.moveTabToTop(tabId)
         }
 
-        let notification = TerminalNotification(
-            id: UUID(),
-            tabId: tabId,
-            surfaceId: surfaceId,
-            title: title,
-            subtitle: subtitle,
-            body: body,
-            createdAt: Date(),
-            isRead: false
-        )
         updated.insert(notification, at: 0)
         notifications = updated
         if !idsToClear.isEmpty {
@@ -863,6 +869,9 @@ final class TerminalNotificationStore: ObservableObject {
             center.removePendingNotificationRequestsOffMain(withIdentifiers: idsToClear)
         }
         scheduleUserNotification(notification)
+
+        // Forward to server bridge if connected
+        ServerBridge.shared.forwardNotification(notification)
     }
 
     func markRead(id: UUID) {
