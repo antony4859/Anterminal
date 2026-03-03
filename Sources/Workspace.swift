@@ -155,6 +155,7 @@ extension Workspace {
             customTitle: customTitle,
             customColor: customColor,
             isPinned: isPinned,
+            isTmuxEnabled: isTmuxEnabled ? true : nil,
             currentDirectory: currentDirectory,
             focusedPanelId: focusedPanelId,
             layout: layout,
@@ -194,6 +195,7 @@ extension Workspace {
         setCustomTitle(snapshot.customTitle)
         setCustomColor(snapshot.customColor)
         isPinned = snapshot.isPinned
+        isTmuxEnabled = snapshot.isTmuxEnabled ?? false
 
         statusEntries = Dictionary(
             uniqueKeysWithValues: snapshot.statusEntries.map { entry in
@@ -233,7 +235,7 @@ extension Workspace {
         }
     }
 
-    private func sessionLayoutSnapshot(from node: ExternalTreeNode) -> SessionWorkspaceLayoutSnapshot {
+    func sessionLayoutSnapshot(from node: ExternalTreeNode) -> SessionWorkspaceLayoutSnapshot {
         switch node {
         case .pane(let pane):
             let panelIds = sessionPanelIDs(for: pane)
@@ -352,6 +354,7 @@ extension Workspace {
             gitBranch: branchSnapshot,
             listeningPorts: listeningPorts,
             ttyName: ttyName,
+            tmuxSessionName: TmuxSessionManager.shared.getSessionName(for: panelId),
             terminal: terminalSnapshot,
             browser: browserSnapshot
         )
@@ -546,6 +549,11 @@ extension Workspace {
             surfaceTTYNames[panelId] = ttyName
         } else {
             surfaceTTYNames.removeValue(forKey: panelId)
+        }
+
+        // Restore tmux session name so the terminal reattaches to the same session
+        if let tmuxName = snapshot.tmuxSessionName?.trimmingCharacters(in: .whitespacesAndNewlines), !tmuxName.isEmpty {
+            TmuxSessionManager.shared.registerSession(panelId: panelId, sessionName: tmuxName)
         }
 
         if let browserSnapshot = snapshot.browser,
@@ -895,6 +903,7 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var customTitle: String?
     @Published var isPinned: Bool = false
     @Published var customColor: String?  // hex string, e.g. "#C0392B"
+    @Published var isTmuxEnabled: Bool = false  // per-workspace: run terminals in tmux for web mirroring
     @Published var currentDirectory: String
 
     /// Ordinal for CMUX_PORT range assignment (monotonically increasing per app session)
@@ -1081,13 +1090,15 @@ final class Workspace: Identifiable, ObservableObject {
         title: String = "Terminal",
         workingDirectory: String? = nil,
         portOrdinal: Int = 0,
-        configTemplate: ghostty_surface_config_s? = nil
+        configTemplate: ghostty_surface_config_s? = nil,
+        isTmuxEnabled: Bool = false
     ) {
         self.id = UUID()
         self.portOrdinal = portOrdinal
         self.processTitle = title
         self.title = title
         self.customTitle = nil
+        self.isTmuxEnabled = isTmuxEnabled
 
         let trimmedWorkingDirectory = workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let hasWorkingDirectory = !trimmedWorkingDirectory.isEmpty

@@ -5671,6 +5671,11 @@ struct VerticalTabsSidebar: View {
     @State private var draggedTabId: UUID?
     @State private var dropIndicator: SidebarDropIndicator?
 
+    // MARK: - Tmux & Claude Code Sessions
+    @State private var tmuxSessions: [TmuxSession] = []
+    @State private var ccSessions: [ClaudeSessionScanner.DiscoveredSession] = []
+    @State private var tmuxRefreshTimer: Timer? = nil
+
     /// Space at top of sidebar for traffic light buttons
     private let trafficLightPadding: CGFloat = 28
     private let tabRowSpacing: CGFloat = 2
@@ -5734,6 +5739,26 @@ struct VerticalTabsSidebar: View {
                 .background(Color.clear)
                 .modifier(ClearScrollBackground())
             }
+
+            // MARK: - Tmux Sessions Section
+            if !tmuxSessions.isEmpty {
+                Divider()
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+
+                SidebarTmuxSection(sessions: tmuxSessions, onRefresh: refreshTmuxSessions)
+            }
+
+            if !ccSessions.isEmpty {
+                Divider()
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+
+                SidebarCCSection(sessions: ccSessions)
+            }
+
+            SidebarServerFooter()
+                .frame(maxWidth: .infinity, alignment: .leading)
 #if DEBUG
             SidebarDevFooter(updateViewModel: updateViewModel)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -5761,6 +5786,13 @@ struct VerticalTabsSidebar: View {
                 tabId: nil,
                 reason: "sidebar_appear"
             )
+            // Start polling tmux & CC sessions
+            refreshTmuxSessions()
+            refreshCCSessions()
+            tmuxRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
+                refreshTmuxSessions()
+                refreshCCSessions()
+            }
         }
         .onDisappear {
             commandKeyMonitor.stop()
@@ -5772,6 +5804,8 @@ struct VerticalTabsSidebar: View {
                 tabId: nil,
                 reason: "sidebar_disappear"
             )
+            tmuxRefreshTimer?.invalidate()
+            tmuxRefreshTimer = nil
         }
         .onChange(of: draggedTabId) { newDraggedTabId in
             SidebarDragLifecycleNotification.postStateDidChange(
@@ -5804,6 +5838,26 @@ struct VerticalTabsSidebar: View {
     private func debugShortSidebarTabId(_ id: UUID?) -> String {
         guard let id else { return "nil" }
         return String(id.uuidString.prefix(5))
+    }
+
+    // MARK: - Session Refresh Helpers
+
+    private func refreshTmuxSessions() {
+        DispatchQueue.global(qos: .utility).async {
+            let sessions = TmuxSessionManager.shared.listActiveSessions()
+            DispatchQueue.main.async {
+                tmuxSessions = sessions
+            }
+        }
+    }
+
+    private func refreshCCSessions() {
+        DispatchQueue.global(qos: .utility).async {
+            let sessions = ClaudeSessionScanner.shared.recentSessions(limit: 15)
+            DispatchQueue.main.async {
+                ccSessions = sessions
+            }
+        }
     }
 }
 
@@ -6242,6 +6296,191 @@ private final class SidebarCommandKeyMonitor: ObservableObject {
     }
 }
 
+// MARK: - Sidebar Tmux Sessions Section
+
+private struct SidebarTmuxSection: View {
+    let sessions: [TmuxSession]
+    let onRefresh: () -> Void
+    @State private var isExpanded = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() } }) {
+                HStack {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 12)
+                    Text("Tmux Sessions (\(sessions.count))")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .textCase(.uppercase)
+                    Spacer()
+                    Button(action: {
+                        TmuxSessionManager.shared.killAllSessions()
+                        onRefresh()
+                    }) {
+                        Text("Kill All")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.red.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                ForEach(sessions) { session in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(session.name)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+                            Text("\(session.attached) attached \u{00B7} \(session.windowCount) win")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button(action: {
+                            TmuxSessionManager.shared.killSession(session.name)
+                            onRefresh()
+                        }) {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 3)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Sidebar Claude Code Sessions Section
+
+private struct SidebarCCSection: View {
+    let sessions: [ClaudeSessionScanner.DiscoveredSession]
+    @State private var isExpanded = true
+
+    private var uniqueProjects: [ClaudeSessionScanner.DiscoveredSession] {
+        var byPath: [String: ClaudeSessionScanner.DiscoveredSession] = [:]
+        for s in sessions {
+            if byPath[s.projectPath] == nil || s.lastModified > byPath[s.projectPath]!.lastModified {
+                byPath[s.projectPath] = s
+            }
+        }
+        return byPath.values.sorted { $0.lastModified > $1.lastModified }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() } }) {
+                HStack {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 12)
+                    Text("Claude Code (\(uniqueProjects.count))")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .textCase(.uppercase)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                ForEach(Array(uniqueProjects.prefix(15))) { session in
+                    Button(action: {
+                        _ = AppDelegate.shared?.addWorkspaceInPreferredMainWindow(
+                            workingDirectory: session.projectPath,
+                            isTmux: true,
+                            debugSource: "sidebar.ccResume"
+                        )
+                    }) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(session.projectName)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.primary)
+                            Text(session.projectPath)
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 3)
+                }
+            }
+        }
+    }
+}
+
+private struct SidebarServerFooter: View {
+    @AppStorage(EmbeddedServerSettings.enabledKey) private var embeddedServerEnabled = EmbeddedServerSettings.defaultEnabled
+    @AppStorage(EmbeddedServerSettings.portKey) private var embeddedServerPort = EmbeddedServerSettings.defaultPort
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(EmbeddedServer.shared.isRunning ? Color.green : Color.secondary.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                Text(EmbeddedServer.shared.isRunning
+                     ? "anterminal: Running on :\(embeddedServerPort)"
+                     : "anterminal: Off")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            HStack(spacing: 8) {
+                Button(action: {
+                    embeddedServerEnabled.toggle()
+                    if embeddedServerEnabled {
+                        EmbeddedServer.shared.start()
+                    } else {
+                        EmbeddedServer.shared.stop()
+                    }
+                }) {
+                    Text(embeddedServerEnabled ? "Stop Server" : "Start Server")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(embeddedServerEnabled ? Color.red.opacity(0.15) : Color.green.opacity(0.15))
+                .foregroundColor(embeddedServerEnabled ? .red : .green)
+                .cornerRadius(6)
+
+                Spacer()
+
+                Button(action: {
+                    AppDelegate.shared?.openPreferencesWindow(debugSource: "sidebar_server_footer")
+                }) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Settings (\u{2318},)")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+}
+
 #if DEBUG
 private struct SidebarDevFooter: View {
     @ObservedObject var updateViewModel: UpdateViewModel
@@ -6644,6 +6883,16 @@ private struct TabItemView: View {
                     Image(systemName: "pin.fill")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(activeSecondaryColor(0.8))
+                }
+
+                if tab.isTmuxEnabled {
+                    Text("TMUX")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.green.opacity(0.7))
+                        .cornerRadius(3)
                 }
 
                 Text(tab.title)

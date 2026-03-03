@@ -1,5 +1,5 @@
 {
-  "originHash" : "a1df212ee81645b29368e6cc39c83aebbbafb5c592f726afc990bab228304987",
+  "originHash" : "755a4a80ba53c1d84fae6728439aa975cbd254dbb6b31ef59eca671a112bf451",
   "pins" : [
     {
       "identity" : "posthog-ios",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "5581748cef2bae787496fe6d61139aebe0a451f6",
         "version" : "2.8.1"
+      }
+    },
+    {
+      "identity" : "swifter",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/httpswift/swifter.git",
+      "state" : {
+        "revision" : "9483a5d459b45c3ffd059f7b55f9638e268632fd",
+        "version" : "1.5.0"
       }
     }
   ],

@@ -1876,13 +1876,44 @@ final class TerminalSurface: Identifiable, ObservableObject {
             }
         }
 
-        if let workingDirectory, !workingDirectory.isEmpty {
-            workingDirectory.withCString { cWorkingDir in
-                surfaceConfig.working_directory = cWorkingDir
-                createSurface()
+        // MARK: - Tmux Session Integration (per-workspace)
+        // When a workspace has tmux enabled, run terminals in tmux sessions
+        // so the web UI can attach to the same session for 1:1 mirroring.
+        let currentTabId = self.tabId
+        let tmuxInfo: (enabled: Bool, title: String?) = MainActor.assumeIsolated {
+            let tabManager = AppDelegate.shared?.tabManager
+            let workspace = tabManager?.tabs.first(where: { $0.id == currentTabId })
+            return (workspace?.isTmuxEnabled ?? false, workspace?.customTitle ?? workspace?.title)
+        }
+        var tmuxCommand: String?
+
+        if tmuxInfo.enabled {
+            let workDir = workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser.path
+            tmuxCommand = TmuxSessionManager.shared.buildCommand(for: id, workingDirectory: workDir, workspaceTitle: tmuxInfo.title)
+        }
+
+        if let tmuxCommand {
+            tmuxCommand.withCString { cCommand in
+                surfaceConfig.command = cCommand
+                if let workingDirectory, !workingDirectory.isEmpty {
+                    workingDirectory.withCString { cWorkingDir in
+                        surfaceConfig.working_directory = cWorkingDir
+                        createSurface()
+                    }
+                } else {
+                    createSurface()
+                }
             }
         } else {
-            createSurface()
+            // Original behavior — no tmux
+            if let workingDirectory, !workingDirectory.isEmpty {
+                workingDirectory.withCString { cWorkingDir in
+                    surfaceConfig.working_directory = cWorkingDir
+                    createSurface()
+                }
+            } else {
+                createSurface()
+            }
         }
 
         if surface == nil {

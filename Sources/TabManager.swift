@@ -761,18 +761,24 @@ class TabManager: ObservableObject {
     func addWorkspace(
         workingDirectory overrideWorkingDirectory: String? = nil,
         select: Bool = true,
-        placementOverride: NewWorkspacePlacement? = nil
+        placementOverride: NewWorkspacePlacement? = nil,
+        isTmux: Bool = false
     ) -> Workspace {
-        sentryBreadcrumb("workspace.create", data: ["tabCount": tabs.count + 1])
+        var isTmux = isTmux
+        if !isTmux && EmbeddedServerSettings.tmuxEnabled() && EmbeddedServerSettings.isEnabled() {
+            isTmux = true
+        }
+        sentryBreadcrumb("workspace.create", data: ["tabCount": tabs.count + 1, "tmux": isTmux])
         let workingDirectory = normalizedWorkingDirectory(overrideWorkingDirectory) ?? preferredWorkingDirectoryForNewTab()
         let inheritedConfig = inheritedTerminalConfigForNewWorkspace()
         let ordinal = Self.nextPortOrdinal
         Self.nextPortOrdinal += 1
         let newWorkspace = Workspace(
-            title: "Terminal \(tabs.count + 1)",
+            title: isTmux ? "tmux: Terminal \(tabs.count + 1)" : "Terminal \(tabs.count + 1)",
             workingDirectory: workingDirectory,
             portOrdinal: ordinal,
-            configTemplate: inheritedConfig
+            configTemplate: inheritedConfig,
+            isTmuxEnabled: isTmux
         )
         wireClosedBrowserTracking(for: newWorkspace)
         let insertIndex = newTabInsertIndex(placementOverride: placementOverride)

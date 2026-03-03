@@ -2748,6 +2748,13 @@ struct SettingsView: View {
     @AppStorage("sidebarShowLog") private var sidebarShowLog = true
     @AppStorage("sidebarShowProgress") private var sidebarShowProgress = true
     @AppStorage("sidebarShowStatusPills") private var sidebarShowMetadata = true
+    @AppStorage(ServerBridgeSettings.enabledKey) private var serverBridgeEnabled = ServerBridgeSettings.defaultEnabled
+    @AppStorage(ServerBridgeSettings.urlKey) private var serverBridgeURL = ServerBridgeSettings.defaultURL
+    @AppStorage(ServerBridgeSettings.autoConnectKey) private var serverBridgeAutoConnect = ServerBridgeSettings.defaultAutoConnect
+    @AppStorage(ServerBridgeSettings.forwardNotificationsKey) private var serverBridgeForwardNotifications = ServerBridgeSettings.defaultForwardNotifications
+    @AppStorage(EmbeddedServerSettings.enabledKey) private var embeddedServerEnabled = EmbeddedServerSettings.defaultEnabled
+    @AppStorage(EmbeddedServerSettings.portKey) private var embeddedServerPort = EmbeddedServerSettings.defaultPort
+    @AppStorage(EmbeddedServerSettings.tmuxEnabledKey) private var tmuxEnabled = EmbeddedServerSettings.defaultTmuxEnabled
     @State private var shortcutResetToken = UUID()
     @State private var topBlurOpacity: Double = 0
     @State private var topBlurBaselineOffset: CGFloat?
@@ -3263,6 +3270,176 @@ struct SettingsView: View {
                         SettingsCardDivider()
 
                         SettingsCardNote("Each workspace gets CMUX_PORT and CMUX_PORT_END env vars with a dedicated port range. New terminals inherit these values.")
+                    }
+
+                    // MARK: - Embedded Web Server
+                    SettingsCard {
+                        SettingsCardRow(
+                            "Enable Web Server",
+                            subtitle: embeddedServerEnabled
+                                ? "Serving terminal sessions to browsers."
+                                : "Web server is disabled."
+                        ) {
+                            Toggle("", isOn: $embeddedServerEnabled)
+                                .labelsHidden()
+                                .controlSize(.small)
+                                .accessibilityIdentifier("SettingsEmbeddedServerEnabledToggle")
+                                .onChange(of: embeddedServerEnabled) { _, newValue in
+                                    if newValue {
+                                        EmbeddedServer.shared.start()
+                                    } else {
+                                        EmbeddedServer.shared.stop()
+                                    }
+                                }
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            "Port",
+                            subtitle: "HTTP port for the embedded server.",
+                            controlWidth: pickerColumnWidth
+                        ) {
+                            TextField("", value: $embeddedServerPort, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .multilineTextAlignment(.trailing)
+                                .disabled(!embeddedServerEnabled)
+                                .onChange(of: embeddedServerPort) { _, _ in
+                                    if embeddedServerEnabled && EmbeddedServer.shared.isRunning {
+                                        EmbeddedServer.shared.stop()
+                                        EmbeddedServer.shared.start()
+                                    }
+                                }
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            "Status",
+                            subtitle: EmbeddedServer.shared.isRunning ? "Running" : "Stopped"
+                        ) {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(EmbeddedServer.shared.isRunning ? Color.green : Color.secondary.opacity(0.4))
+                                    .frame(width: 8, height: 8)
+                                Button("Open in Browser") {
+                                    if let url = URL(string: "http://localhost:\(embeddedServerPort)") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(!embeddedServerEnabled || !EmbeddedServer.shared.isRunning)
+                            }
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardNote("Access your terminal sessions from any device on your network at http://<your-mac-ip>:\(embeddedServerPort). No separate server process required.")
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            "Tmux Sessions",
+                            subtitle: tmuxEnabled
+                                ? "New terminals run in tmux for 1:1 web mirroring."
+                                : "Terminals use a bare shell (no mirroring)."
+                        ) {
+                            Toggle("", isOn: $tmuxEnabled)
+                                .labelsHidden()
+                                .controlSize(.small)
+                                .disabled(!embeddedServerEnabled)
+                                .onChange(of: tmuxEnabled) { _, newValue in
+                                    EmbeddedServerSettings.setTmuxEnabled(newValue)
+                                }
+                        }
+                    }
+
+                    // MARK: - Server Bridge
+                    SettingsCard {
+                        SettingsCardRow(
+                            "Enable Server Bridge",
+                            subtitle: serverBridgeEnabled
+                                ? "Connected to claude-manager for remote monitoring."
+                                : "Server bridge is disabled."
+                        ) {
+                            Toggle("", isOn: $serverBridgeEnabled)
+                                .labelsHidden()
+                                .controlSize(.small)
+                                .accessibilityIdentifier("SettingsServerBridgeEnabledToggle")
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            "Server URL",
+                            subtitle: "Address of the claude-manager Express server.",
+                            controlWidth: pickerColumnWidth
+                        ) {
+                            TextField("", text: $serverBridgeURL)
+                                .textFieldStyle(.roundedBorder)
+                                .multilineTextAlignment(.trailing)
+                                .disabled(!serverBridgeEnabled)
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            "Auto-connect on launch",
+                            subtitle: "Automatically connect when anterminal starts."
+                        ) {
+                            Toggle("", isOn: $serverBridgeAutoConnect)
+                                .labelsHidden()
+                                .controlSize(.small)
+                                .disabled(!serverBridgeEnabled)
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            "Forward notifications",
+                            subtitle: "Send terminal notifications to the server."
+                        ) {
+                            Toggle("", isOn: $serverBridgeForwardNotifications)
+                                .labelsHidden()
+                                .controlSize(.small)
+                                .disabled(!serverBridgeEnabled)
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            "Status",
+                            subtitle: ServerBridge.shared.isConnected ? "Connected" : "Disconnected"
+                        ) {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(ServerBridge.shared.isConnected ? Color.green : Color.secondary.opacity(0.4))
+                                    .frame(width: 8, height: 8)
+                                Button(ServerBridge.shared.isConnected ? "Disconnect" : "Connect") {
+                                    if ServerBridge.shared.isConnected {
+                                        ServerBridge.shared.stop()
+                                    } else {
+                                        ServerBridge.shared.start()
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(!serverBridgeEnabled)
+                                Button("Open Dashboard") {
+                                    if let url = URL(string: serverBridgeURL) {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(!serverBridgeEnabled)
+                            }
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardNote("Connects to a claude-manager server for remote workspace monitoring, phone notifications, and cost tracking. The bridge is optional and all features work without it.")
                     }
 
                     SettingsSectionHeader(title: "Browser")
