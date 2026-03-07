@@ -365,7 +365,7 @@ struct TitlebarControlsView: View {
                     #endif
                     onNewTmuxTab()
                 }
-                .keyboardShortcut("n", modifiers: [.command, .option])
+                .keyboardShortcut("t", modifiers: [.command, .control])
             } label: {
                 iconLabel(systemName: "plus", config: config)
             } primaryAction: {

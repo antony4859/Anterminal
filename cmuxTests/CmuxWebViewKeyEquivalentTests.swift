@@ -7,7 +7,11 @@ import ObjectiveC.runtime
 import Bonsplit
 import UserNotifications
 
-#if canImport(cmux_DEV)
+#if canImport(anterminal_DEV)
+@testable import anterminal_DEV
+#elseif canImport(anterminal)
+@testable import anterminal
+#elseif canImport(cmux_DEV)
 @testable import cmux_DEV
 #elseif canImport(cmux)
 @testable import cmux

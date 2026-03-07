@@ -233,7 +233,7 @@ struct cmuxApp: App {
             }
 
             CommandGroup(replacing: .appInfo) {
-                Button(String(localized: "menu.app.about", defaultValue: "About cmux")) {
+                Button(AppBranding.replacingLegacyBrand(in: String(localized: "menu.app.about", defaultValue: "About cmux"))) {
                     showAboutPanel()
                 }
                 Button(String(localized: "menu.app.ghosttySettings", defaultValue: "Ghostty Settings…")) {
@@ -416,7 +416,7 @@ struct cmuxApp: App {
                         )
                     }
                 }
-                .keyboardShortcut("n", modifiers: [.command, .option])
+                .keyboardShortcut("t", modifiers: [.command, .control])
 
                 splitCommandButton(title: String(localized: "menu.file.openFolder", defaultValue: "Open Folder…"), shortcut: openFolderMenuShortcut) {
                     let panel = NSOpenPanel()
@@ -901,7 +901,7 @@ private enum SettingsAboutWindowKind: String, CaseIterable, Identifiable {
         case .settings:
             return "Settings"
         case .about:
-            return "About cmux"
+            return AppBranding.replacingLegacyBrand(in: String(localized: "menu.app.about", defaultValue: "About cmux"))
         }
     }
 
@@ -1014,7 +1014,7 @@ private struct SettingsAboutTitlebarDebugOptions: Equatable {
         case .about:
             return SettingsAboutTitlebarDebugOptions(
                 overridesEnabled: false,
-                windowTitle: "About cmux",
+                windowTitle: AppBranding.replacingLegacyBrand(in: String(localized: "menu.app.about", defaultValue: "About cmux")),
                 titleVisibility: .hidden,
                 titlebarAppearsTransparent: true,
                 movableByWindowBackground: false,
@@ -1900,7 +1900,7 @@ private struct AboutPanelView: View {
 
             VStack(alignment: .center, spacing: 32) {
                 VStack(alignment: .center, spacing: 8) {
-                    Text(String(localized: "about.appName", defaultValue: "cmux"))
+                    Text(AppBranding.brandName)
                         .bold()
                         .font(.title)
                     Text(String(localized: "about.description", defaultValue: "A Ghostty-based terminal with vertical tabs\nand a notification panel for macOS."))
