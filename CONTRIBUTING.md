@@ -59,7 +59,13 @@ ssh cmux-vm 'cd /Users/cmux/GhosttyTabs && xcodebuild -project GhosttyTabs.xcode
 ### UI tests (run on VM)
 
 ```bash
-ssh cmux-vm 'cd /Users/cmux/GhosttyTabs && xcodebuild -project GhosttyTabs.xcodeproj -scheme cmux -configuration Debug -destination "platform=macOS" -only-testing:cmuxUITests test'
+./scripts/run-vm-ui-tests.sh
+```
+
+If `cmux-vm` is not configured locally, point the wrapper at the VM explicitly:
+
+```bash
+CMUX_VM_SSH_TARGET=cmux@192.168.1.50 ./scripts/run-vm-ui-tests.sh
 ```
 
 ## Ghostty Submodule
