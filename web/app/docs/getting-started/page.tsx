@@ -6,7 +6,7 @@ import { DownloadButton } from "../../components/download-button";
 export const metadata: Metadata = {
   title: "Getting Started",
   description:
-    "Install cmux, the native macOS terminal for AI coding agents. Homebrew, DMG download, CLI setup, and auto-updates via Sparkle.",
+    "Install anterminal, the native macOS terminal for AI coding agents. DMG download, CLI setup, and auto-updates via Sparkle.",
 };
 
 export default function GettingStartedPage() {
@@ -14,7 +14,7 @@ export default function GettingStartedPage() {
     <>
       <h1>Getting Started</h1>
       <p>
-        cmux is a lightweight, native macOS terminal built on Ghostty for
+        anterminal is a lightweight, native macOS terminal built on Ghostty for
         managing multiple AI coding agents. It features vertical tabs, a
         notification panel, and a socket-based control API.
       </p>
@@ -26,15 +26,16 @@ export default function GettingStartedPage() {
         <DownloadButton />
       </div>
       <p>
-        Open the <code>.dmg</code> and drag cmux to your Applications folder.
-        cmux auto-updates via Sparkle, so you only need to download once.
+        Open the <code>.dmg</code> and drag anterminal to your Applications
+        folder. anterminal auto-updates via Sparkle, so you only need to
+        download once.
       </p>
 
       <h3>Homebrew</h3>
       <CodeBlock lang="bash">{`brew tap manaflow-ai/cmux
-brew install --cask cmux`}</CodeBlock>
+brew install --cask anterminal`}</CodeBlock>
       <p>To update later:</p>
-      <CodeBlock lang="bash">{`brew upgrade --cask cmux`}</CodeBlock>
+      <CodeBlock lang="bash">{`brew upgrade --cask anterminal`}</CodeBlock>
 
       <Callout>
         On first launch, macOS may ask you to confirm opening an app from an
@@ -42,7 +43,7 @@ brew install --cask cmux`}</CodeBlock>
       </Callout>
 
       <h2>Verify installation</h2>
-      <p>Open cmux and you should see:</p>
+      <p>Open anterminal and you should see:</p>
       <ul>
         <li>A terminal window with a vertical tab sidebar on the left</li>
         <li>One initial workspace already open</li>
@@ -51,25 +52,25 @@ brew install --cask cmux`}</CodeBlock>
 
       <h2>CLI setup</h2>
       <p>
-        cmux includes a command-line tool for automation. Inside cmux terminals
-        it works automatically. To use the CLI from outside cmux, create a
-        symlink:
+        anterminal includes a command-line tool for automation. Inside
+        anterminal terminals it works automatically. To use the CLI from
+        outside the app, create a symlink:
       </p>
-      <CodeBlock lang="bash">{`sudo ln -sf "/Applications/cmux.app/Contents/Resources/bin/cmux" /usr/local/bin/cmux`}</CodeBlock>
+      <CodeBlock lang="bash">{`sudo ln -sf "/Applications/anterminal.app/Contents/Resources/bin/cmux" /usr/local/bin/cmux`}</CodeBlock>
       <p>Then you can run commands like:</p>
       <CodeBlock lang="bash">{`cmux list-workspaces
 cmux notify --title "Build Complete" --body "Your build finished"`}</CodeBlock>
 
       <h2>Auto-updates</h2>
       <p>
-        cmux checks for updates automatically via Sparkle. When an update is
+        anterminal checks for updates automatically via Sparkle. When an update is
         available you&apos;ll see an update pill in the titlebar. You can also
-        check manually via <strong>cmux → Check for Updates</strong> in the menu
-        bar.
+        check manually via <strong>anterminal → Check for Updates</strong> in
+        the menu bar.
       </p>
 
       <h2>Session restore (current behavior)</h2>
-      <p>After relaunch, cmux restores layout and metadata only:</p>
+      <p>After relaunch, anterminal restores layout and metadata only:</p>
       <ul>
         <li>Window, workspace, and pane layout</li>
         <li>Working directories</li>
@@ -77,7 +78,7 @@ cmux notify --title "Build Complete" --body "Your build finished"`}</CodeBlock>
         <li>Browser URL and navigation history</li>
       </ul>
       <Callout>
-        cmux does not restore live process state yet. Active terminal app
+        anterminal does not restore live process state yet. Active terminal app
         sessions such as Claude Code, tmux, and vim are not resumed after app
         restart.
       </Callout>

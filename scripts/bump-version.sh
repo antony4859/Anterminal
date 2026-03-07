@@ -25,8 +25,9 @@ echo "Current: MARKETING_VERSION=$CURRENT_MARKETING, CURRENT_PROJECT_VERSION=$CU
 # Keep Sparkle build numbers monotonic with the latest published stable appcast.
 # If local build numbers have fallen behind due merges/rebases, auto-correct upward.
 LATEST_RELEASE_BUILD="$(
-  curl -fsSL --max-time 8 https://github.com/antony4859/Anterminal/releases/latest/download/appcast.xml 2>/dev/null \
-    | sed -n 's#.*<sparkle:version>\([0-9][0-9]*\)</sparkle:version>.*#\1#p' \
+  (
+    curl -fsSL --max-time 8 https://github.com/antony4859/Anterminal/releases/latest/download/appcast.xml 2>/dev/null || true
+  ) | sed -n 's#.*<sparkle:version>\([0-9][0-9]*\)</sparkle:version>.*#\1#p' \
     | head -n1
 )"
 if [[ "$LATEST_RELEASE_BUILD" =~ ^[0-9]+$ ]]; then

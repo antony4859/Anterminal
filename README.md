@@ -3,7 +3,7 @@
   <br>
   anterminal
 </h1>
-<p align="center">A macOS terminal with vertical tabs, notifications, and a remote web UI for AI coding agents.<br>Built on top of <a href="https://github.com/manaflow-ai/cmux">cmux</a> and powered by <a href="https://ghostty.org">Ghostty</a>.</p>
+<p align="center">A macOS terminal with vertical tabs, notifications, and a remote web UI for AI coding agents.<br>An official fork of <a href="https://github.com/manaflow-ai/cmux">cmux</a>, rebranded as anterminal and powered by <a href="https://ghostty.org">Ghostty</a>.</p>
 
 <p align="center">
   <a href="https://github.com/antony4859/Anterminal/releases/latest/download/anterminal-macos.dmg">
@@ -76,11 +76,11 @@ The embedded web server lets me check on running agents from my phone over Tails
 
 Everything is scriptable through the CLI and socket API — create workspaces/tabs, split panes, send keystrokes, open URLs in the browser.
 
-## The Zen of cmux
+## The Zen of anterminal
 
-cmux is not prescriptive about how developers hold their tools. It's a terminal and browser with a CLI, and the rest is up to you.
+anterminal is not prescriptive about how developers hold their tools. It's a terminal and browser with a CLI, and the rest is up to you.
 
-cmux is a primitive, not a solution. It gives you a terminal, a browser, notifications, workspaces, splits, tabs, and a CLI to control all of it. cmux doesn't force you into an opinionated way to use coding agents. What you build with the primitives is yours.
+anterminal is a primitive, not a solution. It gives you a terminal, a browser, notifications, workspaces, splits, tabs, and a CLI to control all of it. anterminal doesn't force you into an opinionated way to use coding agents. What you build with the primitives is yours.
 
 The best developers have always built their own tools. Nobody has figured out the best way to work with agents yet, and the teams building closed products definitely haven't either. The developers closest to their own codebases will figure it out first.
 
@@ -88,7 +88,7 @@ Give a million developers composable primitives and they'll collectively find th
 
 ## Documentation
 
-For more info on how to configure cmux, [head over to our docs](https://cmux.dev/docs/getting-started?utm_source=readme).
+For more info on how to configure anterminal, [head over to our docs](https://cmux.dev/docs/getting-started?utm_source=readme).
 ## Keyboard Shortcuts
 
 ### Workspaces
@@ -187,11 +187,11 @@ anterminal does **not** restore live process state inside terminal apps. For exa
 
 ## Star History
 
-<a href="https://star-history.com/#manaflow-ai/cmux&Date">
+<a href="https://star-history.com/#antony4859/Anterminal&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" width="600" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=antony4859/Anterminal&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=antony4859/Anterminal&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=antony4859/Anterminal&type=Date" width="600" />
  </picture>
 </a>
 
@@ -201,13 +201,13 @@ Ways to get involved:
 
 - Follow us on X for updates [@manaflowai](https://x.com/manaflowai), [@lawrencecchen](https://x.com/lawrencecchen), and [@austinywang](https://x.com/austinywang)
 - Join the conversation on [Discord](https://discord.gg/xsgFEVrWCZ)
-- Create and participate in [GitHub issues](https://github.com/manaflow-ai/cmux/issues) and [discussions](https://github.com/manaflow-ai/cmux/discussions)
-- Let us know what you're building with cmux
+- Create and participate in [GitHub issues](https://github.com/antony4859/Anterminal/issues) and [discussions](https://github.com/antony4859/Anterminal/discussions)
+- Let us know what you're building with anterminal
 
 ## Community
 
 - [Discord](https://discord.gg/xsgFEVrWCZ)
-- [GitHub](https://github.com/manaflow-ai/cmux)
+- [GitHub](https://github.com/antony4859/Anterminal)
 - [X / Twitter](https://twitter.com/manaflowai)
 - [YouTube](https://www.youtube.com/channel/UCAa89_j-TWkrXfk9A3CbASw)
 - [LinkedIn](https://www.linkedin.com/company/manaflow-ai/)
@@ -215,12 +215,12 @@ Ways to get involved:
 
 ## Founder's Edition
 
-cmux is free, open source, and always will be. If you'd like to support development and get early access to what's coming next:
+anterminal is free, open source, and always will be. If you'd like to support development and get early access to what's coming next:
 
 **[Get Founder's Edition](https://buy.stripe.com/3cI00j2Ld0it5OU33r5EY0q)**
 
 - **Prioritized feature requests/bug fixes**
-- **Early access: cmux AI that gives you context on every workspace, tab and panel**
+- **Early access: anterminal AI that gives you context on every workspace, tab and panel**
 - **Early access: iOS app with terminals synced between desktop and phone**
 - **Early access: Cloud VMs**
 - **Early access: Voice mode**

@@ -17,7 +17,7 @@ function pngDimensions(filePath: string): { width: number; height: number } {
 export const metadata: Metadata = {
   title: "Changelog",
   description:
-    "cmux release notes and version history. New features, bug fixes, and changes for the native macOS terminal.",
+    "anterminal release notes and version history. New features, bug fixes, and changes for the native macOS terminal.",
 };
 
 interface ChangelogSection {

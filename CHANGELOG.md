@@ -1,6 +1,20 @@
 # Changelog
 
-All notable changes to cmux are documented here.
+All notable changes to anterminal are documented here.
+
+## [1.0.0] - 2026-03-07
+
+### Added
+- First public `anterminal` release as an official fork of `cmux`
+- Rebranded app identity, icon, website links, update feed, and release packaging
+- Tmux workspace creation entry points in the app UI and web API
+- Configurable VM UI test wrapper for fork-specific testing workflows
+
+### Fixed
+- Tmux workspace creation now uses the correct tmux-backed creation path
+- Tmux workspace shortcut no longer collides with the restore-closed-panel shortcut
+- Release, nightly, and DMG packaging now publish `anterminal.app` and `anterminal-macos.dmg`
+- Embedded web server and tmux-backed workspace creation verified on the rebranded app path
 
 ## [0.61.0] - 2026-02-25
 
