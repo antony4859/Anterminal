@@ -66,7 +66,7 @@ export default function CommunityPage() {
           />
 
           <CommunityLink
-            href="https://github.com/manaflow-ai/cmux"
+            href="https://github.com/antony4859/Anterminal"
             name="GitHub"
             action="View on GitHub"
             description="Star the repo, report issues, and contribute"

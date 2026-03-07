@@ -48,7 +48,10 @@ fi
 TAG="$1"
 SIGN_HASH="A050CC7E193C8221BDBA204E731B046CDCCC1B30"
 ENTITLEMENTS="cmux.entitlements"
-APP_PATH="build/Build/Products/Release/cmux.app"
+RELEASE_REPO="${RELEASE_REPO:-antony4859/Anterminal}"
+RELEASE_APP_NAME="${RELEASE_APP_NAME:-anterminal}"
+RELEASE_DMG_NAME="${RELEASE_DMG_NAME:-anterminal-macos.dmg}"
+APP_PATH="build/Build/Products/Release/${RELEASE_APP_NAME}.app"
 
 # --- Pre-flight ---
 source ~/.secrets/cmuxterm.env
@@ -81,7 +84,7 @@ APP_PLIST="$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP_PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_KEY_DERIVED" "$APP_PLIST"
-/usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/manaflow-ai/cmux/releases/latest/download/appcast.xml" "$APP_PLIST"
+/usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/${RELEASE_REPO}/releases/latest/download/appcast.xml" "$APP_PLIST"
 echo "Sparkle keys injected"
 
 # --- Codesign ---
@@ -96,35 +99,35 @@ echo "Codesign verified"
 
 # --- Notarize app ---
 echo "Notarizing app..."
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" cmux-notary.zip
-xcrun notarytool submit cmux-notary.zip \
+ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" anterminal-notary.zip
+xcrun notarytool submit anterminal-notary.zip \
   --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
 xcrun stapler staple "$APP_PATH"
 xcrun stapler validate "$APP_PATH"
-rm -f cmux-notary.zip
+rm -f anterminal-notary.zip
 echo "App notarized"
 
 # --- Create and notarize DMG ---
 echo "Creating DMG..."
-rm -f cmux-macos.dmg
-create-dmg --codesign "$SIGN_HASH" cmux-macos.dmg "$APP_PATH"
+rm -f "$RELEASE_DMG_NAME"
+create-dmg --codesign "$SIGN_HASH" "$RELEASE_DMG_NAME" "$APP_PATH"
 echo "Notarizing DMG..."
-xcrun notarytool submit cmux-macos.dmg \
+xcrun notarytool submit "$RELEASE_DMG_NAME" \
   --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
-xcrun stapler staple cmux-macos.dmg
-xcrun stapler validate cmux-macos.dmg
+xcrun stapler staple "$RELEASE_DMG_NAME"
+xcrun stapler validate "$RELEASE_DMG_NAME"
 echo "DMG notarized"
 
 # --- Generate Sparkle appcast ---
 echo "Generating appcast..."
-./scripts/sparkle_generate_appcast.sh cmux-macos.dmg "$TAG" appcast.xml
+RELEASE_REPO="$RELEASE_REPO" ./scripts/sparkle_generate_appcast.sh "$RELEASE_DMG_NAME" "$TAG" appcast.xml
 
 # --- Create GitHub release (if needed) and upload ---
 if gh release view "$TAG" >/dev/null 2>&1; then
   echo "Release $TAG already exists"
   EXISTING_ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[].name' || true)"
   HAS_CONFLICTING_ASSET="false"
-  for asset in cmux-macos.dmg appcast.xml; do
+  for asset in "$RELEASE_DMG_NAME" appcast.xml; do
     if printf '%s\n' "$EXISTING_ASSETS" | grep -Fxq "$asset"; then
       HAS_CONFLICTING_ASSET="true"
       break
@@ -139,14 +142,14 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 
   if [[ "$ALLOW_OVERWRITE" == "true" ]]; then
     echo "Uploading with overwrite enabled for existing release $TAG..."
-    gh release upload "$TAG" cmux-macos.dmg appcast.xml --clobber
+    gh release upload "$TAG" "$RELEASE_DMG_NAME" appcast.xml --clobber
   else
     echo "Uploading to existing release $TAG..."
-    gh release upload "$TAG" cmux-macos.dmg appcast.xml
+    gh release upload "$TAG" "$RELEASE_DMG_NAME" appcast.xml
   fi
 else
   echo "Creating release $TAG and uploading..."
-  gh release create "$TAG" cmux-macos.dmg appcast.xml --title "$TAG" --notes "See CHANGELOG.md for details"
+  gh release create "$TAG" "$RELEASE_DMG_NAME" appcast.xml --title "$TAG" --notes "See CHANGELOG.md for details"
 fi
 
 # --- Verify ---
@@ -155,19 +158,27 @@ gh release view "$TAG"
 # --- Update Homebrew cask (skip for nightlies) ---
 if [[ "$TAG" != *"-nightly"* ]]; then
   VERSION="${TAG#v}"
-  DMG_SHA256=$(shasum -a 256 cmux-macos.dmg | cut -d' ' -f1)
+  DMG_SHA256=$(shasum -a 256 "$RELEASE_DMG_NAME" | cut -d' ' -f1)
   echo "Updating homebrew cask to $VERSION (SHA: $DMG_SHA256)..."
-  CASK_FILE="homebrew-cmux/Casks/cmux.rb"
+  CASK_FILE=""
+  CASK_REPO_DIR=""
+  if [ -d "homebrew-anterminal/Casks" ]; then
+    CASK_FILE="homebrew-anterminal/Casks/anterminal.rb"
+    CASK_REPO_DIR="homebrew-anterminal"
+  elif [ -d "homebrew-cmux/Casks" ]; then
+    CASK_FILE="homebrew-cmux/Casks/anterminal.rb"
+    CASK_REPO_DIR="homebrew-cmux"
+  fi
   if [ -f "$CASK_FILE" ]; then
     cat > "$CASK_FILE" << CASKEOF
-cask "cmux" do
+cask "anterminal" do
   version "${VERSION}"
   sha256 "${DMG_SHA256}"
 
-  url "https://github.com/manaflow-ai/cmux/releases/download/v#{version}/cmux-macos.dmg"
-  name "cmux"
+  url "https://github.com/${RELEASE_REPO}/releases/download/v#{version}/${RELEASE_DMG_NAME}"
+  name "anterminal"
   desc "Lightweight native macOS terminal with vertical tabs for AI coding agents"
-  homepage "https://github.com/manaflow-ai/cmux"
+  homepage "https://github.com/${RELEASE_REPO}"
 
   livecheck do
     url :url
@@ -176,33 +187,33 @@ cask "cmux" do
 
   depends_on macos: ">= :ventura"
 
-  app "cmux.app"
-  binary "#{appdir}/cmux.app/Contents/Resources/bin/cmux"
+  app "anterminal.app"
+  binary "#{appdir}/anterminal.app/Contents/Resources/bin/cmux"
 
   zap trash: [
     "~/Library/Application Support/cmux",
     "~/Library/Caches/cmux",
-    "~/Library/Preferences/ai.manaflow.cmuxterm.plist",
-  ]
+      "~/Library/Preferences/ai.manaflow.cmuxterm.plist",
+    ]
 end
 CASKEOF
-    cd homebrew-cmux
-    git add Casks/cmux.rb
+    cd "$CASK_REPO_DIR"
+    git add Casks/anterminal.rb
     if git diff --staged --quiet; then
       echo "Homebrew cask already up to date"
     else
-      git commit -m "Update cmux to ${VERSION}"
+      git commit -m "Update anterminal to ${VERSION}"
       git push
       echo "Homebrew cask updated"
     fi
     cd ..
   else
-    echo "WARNING: homebrew-cmux submodule not found, skipping cask update"
+    echo "WARNING: no homebrew tap checkout found, skipping cask update"
   fi
 fi
 
 # --- Cleanup ---
-rm -rf build/ cmux-macos.dmg appcast.xml
+rm -rf build/ "$RELEASE_DMG_NAME" appcast.xml
 echo ""
 echo "=== Release $TAG complete ==="
-say "cmux release complete"
+say "anterminal release complete"

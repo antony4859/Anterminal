@@ -31,7 +31,7 @@ export function NavLinks() {
         Community
       </Link>
       <a
-        href="https://github.com/manaflow-ai/cmux"
+        href="https://github.com/antony4859/Anterminal"
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => posthog.capture("cmuxterm_github_clicked", { location: "navbar" })}
@@ -42,4 +42,3 @@ export function NavLinks() {
     </>
   );
 }
-

@@ -195,7 +195,7 @@ export default function ShowHNLaunchPage() {
 
       <p>
         If you&apos;re running multiple coding agents,{" "}
-        <a href="https://github.com/manaflow-ai/cmux">give cmux a try</a>.
+        <a href="https://github.com/antony4859/Anterminal">give anterminal a try</a>.
       </p>
 
       <div className="my-6">

@@ -64,7 +64,7 @@ export default function RootLayout({
     applicationCategory: "DeveloperApplication",
     url: "https://cmux.dev",
     downloadUrl:
-      "https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg",
+      "https://github.com/antony4859/Anterminal/releases/latest/download/anterminal-macos.dmg",
     description:
       "Native macOS terminal built on Ghostty. Works with Claude Code, Codex, OpenCode, Gemini CLI, Kiro, Aider, and any CLI tool. Vertical tabs, notification rings, split panes, and a socket API.",
     keywords:

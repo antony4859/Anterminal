@@ -201,7 +201,7 @@ export default function Home() {
               <p className="font-medium mb-1">Is cmux free?</p>
               <p className="text-muted">
                 Yes, cmux is free to use. The source code is available on{" "}
-                <a href="https://github.com/manaflow-ai/cmux" className="underline underline-offset-2 decoration-border hover:decoration-foreground transition-colors">GitHub</a>.
+                <a href="https://github.com/antony4859/Anterminal" className="underline underline-offset-2 decoration-border hover:decoration-foreground transition-colors">GitHub</a>.
               </p>
             </div>
           </div>

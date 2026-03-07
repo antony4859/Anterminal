@@ -5,7 +5,7 @@ import posthog from "posthog-js";
 export function GitHubButton({ location = "hero" }: { location?: string }) {
   return (
     <a
-      href="https://github.com/manaflow-ai/cmux"
+      href="https://github.com/antony4859/Anterminal"
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => posthog.capture("cmuxterm_github_clicked", { location })}
