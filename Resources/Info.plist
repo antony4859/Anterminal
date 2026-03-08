@@ -95,6 +95,26 @@
 				<string>public.data</string>
 			</array>
 		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.cmux.sidebar-tmux-session</string>
+			<key>UTTypeDescription</key>
+			<string>cmux Sidebar Tmux Session</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.cmux.sidebar-claude-session</string>
+			<key>UTTypeDescription</key>
+			<string>cmux Sidebar Claude Session</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>

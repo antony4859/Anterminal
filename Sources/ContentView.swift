@@ -6931,6 +6931,7 @@ struct VerticalTabsSidebar: View {
     @StateObject private var dragFailsafeMonitor = SidebarDragFailsafeMonitor()
     @State private var draggedTabId: UUID?
     @State private var dropIndicator: SidebarDropIndicator?
+    @State private var isExternalSessionDragActive = false
 
     // MARK: - Tmux & Claude Code Sessions
     @State private var tmuxSessions: [TmuxSession] = []
@@ -6962,7 +6963,9 @@ struct VerticalTabsSidebar: View {
                                     showsModifierShortcutHints: modifierKeyMonitor.isModifierPressed,
                                     dragAutoScrollController: dragAutoScrollController,
                                     draggedTabId: $draggedTabId,
-                                    dropIndicator: $dropIndicator
+                                    dropIndicator: $dropIndicator,
+                                    isExternalSessionDragActive: $isExternalSessionDragActive,
+                                    onDropSession: handleSidebarSessionDrop
                                 )
                             }
                         }
@@ -6975,7 +6978,9 @@ struct VerticalTabsSidebar: View {
                             lastSidebarSelectionIndex: $lastSidebarSelectionIndex,
                             dragAutoScrollController: dragAutoScrollController,
                             draggedTabId: $draggedTabId,
-                            dropIndicator: $dropIndicator
+                            dropIndicator: $dropIndicator,
+                            isExternalSessionDragActive: $isExternalSessionDragActive,
+                            onDropSession: handleSidebarSessionDrop
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -7008,7 +7013,11 @@ struct VerticalTabsSidebar: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
 
-                SidebarTmuxSection(sessions: tmuxSessions, onRefresh: refreshTmuxSessions)
+                SidebarTmuxSection(
+                    sessions: tmuxSessions,
+                    onRefresh: refreshTmuxSessions,
+                    onOpenSession: openTmuxSession
+                )
             }
 
             if !ccSessions.isEmpty {
@@ -7016,7 +7025,10 @@ struct VerticalTabsSidebar: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
 
-                SidebarCCSection(sessions: ccSessions)
+                SidebarCCSection(
+                    sessions: ccSessions,
+                    onOpenSession: openClaudeSession
+                )
             }
 
             SidebarServerFooter()
@@ -7035,6 +7047,7 @@ struct VerticalTabsSidebar: View {
             modifierKeyMonitor.start()
             draggedTabId = nil
             dropIndicator = nil
+            isExternalSessionDragActive = false
             SidebarDragLifecycleNotification.postStateDidChange(
                 tabId: nil,
                 reason: "sidebar_appear"
@@ -7053,6 +7066,7 @@ struct VerticalTabsSidebar: View {
             dragFailsafeMonitor.stop()
             draggedTabId = nil
             dropIndicator = nil
+            isExternalSessionDragActive = false
             SidebarDragLifecycleNotification.postStateDidChange(
                 tabId: nil,
                 reason: "sidebar_disappear"
@@ -7077,6 +7091,7 @@ struct VerticalTabsSidebar: View {
             dragFailsafeMonitor.stop()
             dragAutoScrollController.stop()
             dropIndicator = nil
+            isExternalSessionDragActive = false
         }
         .onReceive(NotificationCenter.default.publisher(for: SidebarDragLifecycleNotification.requestClear)) { notification in
             guard draggedTabId != nil else { return }
@@ -7111,6 +7126,67 @@ struct VerticalTabsSidebar: View {
                 ccSessions = sessions
             }
         }
+    }
+
+    private func openTmuxSession(_ session: TmuxSession) {
+        _ = insertSidebarSession(.tmux(session), insertionIndex: nil)
+    }
+
+    private func openClaudeSession(_ session: ClaudeSessionScanner.DiscoveredSession) {
+        _ = insertSidebarSession(.claude(session), insertionIndex: nil)
+    }
+
+    private func handleSidebarSessionDrop(
+        transfer: SidebarSessionDragPayload.Transfer,
+        targetTabId: UUID?,
+        indicator: SidebarDropIndicator?
+    ) -> Bool {
+        let insertionIndex = SidebarSessionDropPlanner.targetIndex(
+            targetTabId: targetTabId,
+            indicator: indicator,
+            tabIds: tabManager.tabs.map(\.id)
+        )
+        return insertSidebarSession(transfer, insertionIndex: insertionIndex)
+    }
+
+    @discardableResult
+    private func insertSidebarSession(
+        _ transfer: SidebarSessionDragPayload.Transfer,
+        insertionIndex: Int?
+    ) -> Bool {
+        let workspace: Workspace
+
+        switch transfer {
+        case .tmux(let session):
+            let workingDirectory = session.currentPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : session.currentPath
+            workspace = tabManager.addWorkspace(
+                workingDirectory: workingDirectory,
+                select: true,
+                isTmux: true
+            )
+            if let panelId = workspace.focusedPanelId {
+                TmuxSessionManager.shared.registerSession(panelId: panelId, sessionName: session.name)
+            }
+            workspace.setCustomTitle(session.name)
+        case .claude(let session):
+            workspace = tabManager.addWorkspace(
+                workingDirectory: session.projectPath,
+                select: true,
+                isTmux: true
+            )
+        }
+
+        if let insertionIndex {
+            let clampedIndex = min(max(insertionIndex, 0), max(tabManager.tabs.count - 1, 0))
+            _ = tabManager.reorderWorkspace(tabId: workspace.id, toIndex: clampedIndex)
+        }
+
+        selectedTabIds = [workspace.id]
+        lastSidebarSelectionIndex = tabManager.tabs.firstIndex { $0.id == workspace.id }
+        selection = .tabs
+        return true
     }
 }
 
@@ -8521,7 +8597,8 @@ private struct SidebarFeedbackComposerSheet: View {
 private struct SidebarTmuxSection: View {
     let sessions: [TmuxSession]
     let onRefresh: () -> Void
-    @State private var isExpanded = false
+    let onOpenSession: (TmuxSession) -> Void
+    @AppStorage("sidebarTmuxSessionsExpanded") private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -8554,15 +8631,21 @@ private struct SidebarTmuxSection: View {
             if isExpanded {
                 ForEach(sessions) { session in
                     HStack {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(session.name)
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
-                            Text("\(session.attached) attached \u{00B7} \(session.windowCount) win")
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
+                        Button(action: {
+                            onOpenSession(session)
+                        }) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(session.name)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                Text("\(session.attached) attached \u{00B7} \(session.windowCount) win")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .buttonStyle(.plain)
                         Spacer()
                         Button(action: {
                             TmuxSessionManager.shared.killSession(session.name)
@@ -8576,6 +8659,9 @@ private struct SidebarTmuxSection: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 3)
+                    .onDrag {
+                        SidebarSessionDragPayload.provider(for: session)
+                    }
                 }
             }
         }
@@ -8815,7 +8901,8 @@ private struct SidebarFooterIconButtonStyleBody: View {
 
 private struct SidebarCCSection: View {
     let sessions: [ClaudeSessionScanner.DiscoveredSession]
-    @State private var isExpanded = true
+    let onOpenSession: (ClaudeSessionScanner.DiscoveredSession) -> Void
+    @AppStorage("sidebarClaudeCodeSessionsExpanded") private var isExpanded = false
 
     private var uniqueProjects: [ClaudeSessionScanner.DiscoveredSession] {
         var byPath: [String: ClaudeSessionScanner.DiscoveredSession] = [:]
@@ -8849,11 +8936,7 @@ private struct SidebarCCSection: View {
             if isExpanded {
                 ForEach(Array(uniqueProjects.prefix(15))) { session in
                     Button(action: {
-                        _ = AppDelegate.shared?.addWorkspaceInPreferredMainWindow(
-                            workingDirectory: session.projectPath,
-                            isTmux: true,
-                            debugSource: "sidebar.ccResume"
-                        )
+                        onOpenSession(session)
                     }) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(session.projectName)
@@ -8870,6 +8953,9 @@ private struct SidebarCCSection: View {
                     .buttonStyle(.plain)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 3)
+                    .onDrag {
+                        SidebarSessionDragPayload.provider(for: session)
+                    }
                 }
             }
         }
@@ -9032,6 +9118,8 @@ private struct SidebarEmptyArea: View {
     let dragAutoScrollController: SidebarDragAutoScrollController
     @Binding var draggedTabId: UUID?
     @Binding var dropIndicator: SidebarDropIndicator?
+    @Binding var isExternalSessionDragActive: Bool
+    let onDropSession: (SidebarSessionDragPayload.Transfer, UUID?, SidebarDropIndicator?) -> Bool
 
     var body: some View {
         Color.clear
@@ -9055,6 +9143,15 @@ private struct SidebarEmptyArea: View {
                 dragAutoScrollController: dragAutoScrollController,
                 dropIndicator: $dropIndicator
             ))
+            .onDrop(of: SidebarSessionDragPayload.dropContentTypes, delegate: SidebarSessionDropDelegate(
+                targetTabId: nil,
+                tabManager: tabManager,
+                targetRowHeight: nil,
+                dragAutoScrollController: dragAutoScrollController,
+                dropIndicator: $dropIndicator,
+                isExternalSessionDragActive: $isExternalSessionDragActive,
+                onPerformDrop: onDropSession
+            ))
             .overlay(alignment: .top) {
                 if shouldShowTopDropIndicator {
                     Rectangle()
@@ -9067,7 +9164,7 @@ private struct SidebarEmptyArea: View {
     }
 
     private var shouldShowTopDropIndicator: Bool {
-        guard draggedTabId != nil, let indicator = dropIndicator else { return false }
+        guard (draggedTabId != nil || isExternalSessionDragActive), let indicator = dropIndicator else { return false }
         if indicator.tabId == nil {
             return true
         }
@@ -9162,6 +9259,8 @@ private struct TabItemView: View {
     let dragAutoScrollController: SidebarDragAutoScrollController
     @Binding var draggedTabId: UUID?
     @Binding var dropIndicator: SidebarDropIndicator?
+    @Binding var isExternalSessionDragActive: Bool
+    let onDropSession: (SidebarSessionDragPayload.Transfer, UUID?, SidebarDropIndicator?) -> Bool
     @State private var isHovering = false
     @State private var rowHeight: CGFloat = 1
     @AppStorage(ShortcutHintDebugSettings.sidebarHintXKey) private var sidebarShortcutHintXOffset = ShortcutHintDebugSettings.defaultSidebarHintX
@@ -9633,6 +9732,15 @@ private struct TabItemView: View {
             dragAutoScrollController: dragAutoScrollController,
             dropIndicator: $dropIndicator
         ))
+        .onDrop(of: SidebarSessionDragPayload.dropContentTypes, delegate: SidebarSessionDropDelegate(
+            targetTabId: tab.id,
+            tabManager: tabManager,
+            targetRowHeight: rowHeight,
+            dragAutoScrollController: dragAutoScrollController,
+            dropIndicator: $dropIndicator,
+            isExternalSessionDragActive: $isExternalSessionDragActive,
+            onPerformDrop: onDropSession
+        ))
         .onDrop(of: BonsplitTabDragPayload.dropContentTypes, delegate: SidebarBonsplitTabDropDelegate(
             targetWorkspaceId: tab.id,
             tabManager: tabManager,
@@ -9880,7 +9988,7 @@ private struct TabItemView: View {
     }
 
     private var showsCenteredTopDropIndicator: Bool {
-        guard draggedTabId != nil, let indicator = dropIndicator else { return false }
+        guard (draggedTabId != nil || isExternalSessionDragActive), let indicator = dropIndicator else { return false }
         if indicator.tabId == tab.id && indicator.edge == .top {
             return true
         }
@@ -10905,6 +11013,152 @@ private enum SidebarTabDragPayload {
     }
 }
 
+private enum SidebarSessionDragPayload {
+    static let tmuxTypeIdentifier = "com.cmux.sidebar-tmux-session"
+    static let claudeTypeIdentifier = "com.cmux.sidebar-claude-session"
+    static let tmuxDropContentType = UTType(exportedAs: tmuxTypeIdentifier)
+    static let claudeDropContentType = UTType(exportedAs: claudeTypeIdentifier)
+    static let dropContentTypes: [UTType] = [tmuxDropContentType, claudeDropContentType]
+
+    struct TmuxTransfer: Codable {
+        let name: String
+        let currentPath: String
+    }
+
+    struct ClaudeTransfer: Codable {
+        let projectPath: String
+        let projectName: String
+    }
+
+    enum Transfer {
+        case tmux(TmuxSession)
+        case claude(ClaudeSessionScanner.DiscoveredSession)
+    }
+
+    static func provider(for session: TmuxSession) -> NSItemProvider {
+        provider(
+            typeIdentifier: tmuxTypeIdentifier,
+            payload: TmuxTransfer(name: session.name, currentPath: session.currentPath)
+        )
+    }
+
+    static func provider(for session: ClaudeSessionScanner.DiscoveredSession) -> NSItemProvider {
+        provider(
+            typeIdentifier: claudeTypeIdentifier,
+            payload: ClaudeTransfer(projectPath: session.projectPath, projectName: session.projectName)
+        )
+    }
+
+    static func currentTransfer() -> Transfer? {
+        let pasteboard = NSPasteboard(name: .drag)
+
+        if let session = decodeTmuxTransfer(from: pasteboard) {
+            return .tmux(session)
+        }
+        if let session = decodeClaudeTransfer(from: pasteboard) {
+            return .claude(session)
+        }
+        return nil
+    }
+
+    private static func provider<Payload: Encodable>(typeIdentifier: String, payload: Payload) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: typeIdentifier, visibility: .ownProcess) { completion in
+            let data = try? JSONEncoder().encode(payload)
+            completion(data, nil)
+            return nil
+        }
+        return provider
+    }
+
+    private static func decodeTmuxTransfer(from pasteboard: NSPasteboard) -> TmuxSession? {
+        guard let transfer = decode(TmuxTransfer.self, typeIdentifier: tmuxTypeIdentifier, from: pasteboard) else {
+            return nil
+        }
+        return TmuxSession(
+            name: transfer.name,
+            created: .now,
+            windowCount: 1,
+            attached: 0,
+            currentPath: transfer.currentPath
+        )
+    }
+
+    private static func decodeClaudeTransfer(from pasteboard: NSPasteboard) -> ClaudeSessionScanner.DiscoveredSession? {
+        guard let transfer = decode(ClaudeTransfer.self, typeIdentifier: claudeTypeIdentifier, from: pasteboard) else {
+            return nil
+        }
+        return ClaudeSessionScanner.DiscoveredSession(
+            uuid: UUID().uuidString.lowercased(),
+            projectPath: transfer.projectPath,
+            projectName: transfer.projectName,
+            lastModified: .now,
+            sizeBytes: 0
+        )
+    }
+
+    private static func decode<Payload: Decodable>(
+        _ type: Payload.Type,
+        typeIdentifier: String,
+        from pasteboard: NSPasteboard
+    ) -> Payload? {
+        let type = NSPasteboard.PasteboardType(typeIdentifier)
+        if let data = pasteboard.data(forType: type),
+           let payload = try? JSONDecoder().decode(Payload.self, from: data) {
+            return payload
+        }
+        if let raw = pasteboard.string(forType: type),
+           let data = raw.data(using: .utf8),
+           let payload = try? JSONDecoder().decode(Payload.self, from: data) {
+            return payload
+        }
+        return nil
+    }
+}
+
+private enum SidebarSessionDropPlanner {
+    static func targetIndex(
+        targetTabId: UUID?,
+        indicator: SidebarDropIndicator?,
+        tabIds: [UUID]
+    ) -> Int {
+        if let indicator {
+            if let tabId = indicator.tabId,
+               let tabIndex = tabIds.firstIndex(of: tabId) {
+                return indicator.edge == .bottom ? tabIndex + 1 : tabIndex
+            }
+            return tabIds.count
+        }
+
+        if let targetTabId,
+           let targetIndex = tabIds.firstIndex(of: targetTabId) {
+            return targetIndex
+        }
+
+        return tabIds.count
+    }
+
+    static func indicator(
+        targetTabId: UUID?,
+        tabIds: [UUID],
+        pointerY: CGFloat? = nil,
+        targetHeight: CGFloat? = nil
+    ) -> SidebarDropIndicator {
+        if let targetTabId,
+           let targetIndex = tabIds.firstIndex(of: targetTabId) {
+            let edge: SidebarDropEdge
+            if let pointerY, let targetHeight, targetHeight > 0 {
+                edge = pointerY >= (targetHeight / 2) ? .bottom : .top
+            } else {
+                edge = .top
+            }
+            return SidebarDropIndicator(tabId: tabIds[targetIndex], edge: edge)
+        }
+
+        return SidebarDropIndicator(tabId: nil, edge: .bottom)
+    }
+}
+
 private enum BonsplitTabDragPayload {
     static let typeIdentifier = "com.splittabbar.tabtransfer"
     static let dropContentType = UTType(exportedAs: typeIdentifier)
@@ -11009,6 +11263,68 @@ private struct SidebarBonsplitTabDropDelegate: DropDelegate {
         } else {
             lastSidebarSelectionIndex = nil
         }
+    }
+}
+
+private struct SidebarSessionDropDelegate: DropDelegate {
+    let targetTabId: UUID?
+    let tabManager: TabManager
+    let targetRowHeight: CGFloat?
+    let dragAutoScrollController: SidebarDragAutoScrollController
+    @Binding var dropIndicator: SidebarDropIndicator?
+    @Binding var isExternalSessionDragActive: Bool
+    let onPerformDrop: (SidebarSessionDragPayload.Transfer, UUID?, SidebarDropIndicator?) -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: SidebarSessionDragPayload.dropContentTypes) &&
+            SidebarSessionDragPayload.currentTransfer() != nil
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard validateDrop(info: info) else { return }
+        isExternalSessionDragActive = true
+        dragAutoScrollController.updateFromDragLocation()
+        updateDropIndicator(for: info)
+    }
+
+    func dropExited(info: DropInfo) {
+        dragAutoScrollController.stop()
+        isExternalSessionDragActive = false
+        if dropIndicator?.tabId == targetTabId || targetTabId == nil {
+            dropIndicator = nil
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard validateDrop(info: info) else { return nil }
+        isExternalSessionDragActive = true
+        dragAutoScrollController.updateFromDragLocation()
+        updateDropIndicator(for: info)
+        return DropProposal(operation: .copy)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        defer {
+            dragAutoScrollController.stop()
+            dropIndicator = nil
+            isExternalSessionDragActive = false
+        }
+
+        guard validateDrop(info: info),
+              let transfer = SidebarSessionDragPayload.currentTransfer() else {
+            return false
+        }
+
+        return onPerformDrop(transfer, targetTabId, dropIndicator)
+    }
+
+    private func updateDropIndicator(for info: DropInfo) {
+        dropIndicator = SidebarSessionDropPlanner.indicator(
+            targetTabId: targetTabId,
+            tabIds: tabManager.tabs.map(\.id),
+            pointerY: targetTabId == nil ? nil : info.location.y,
+            targetHeight: targetRowHeight
+        )
     }
 }
 
