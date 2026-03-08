@@ -268,9 +268,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path "*/Build/Products/Debug/cmux DEV.app" -print -quit)"
+          APP_NAME="anterminal DEV"
+          APP_BINARY_NAME="anterminal DEV"
+
+          APP="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path "*/Build/Products/Debug/${APP_NAME}.app" -print -quit)"
           if [ -z "${APP:-}" ] || [ ! -d "$APP" ]; then
-            echo "cmux DEV.app not found in DerivedData" >&2
+            echo "${APP_NAME}.app not found in DerivedData" >&2
             exit 1
           fi
 
@@ -281,11 +284,11 @@ jobs:
               || echo 'com.cmuxterm.app.debug'
           )"
 
-          pkill -x "cmux DEV" || true
+          pkill -x "$APP_BINARY_NAME" || true
           rm -f "$SOCK" "/tmp/cmux-${TAG}.sock" || true
           defaults write "$BUNDLE_ID" socketControlMode -string full >/dev/null 2>&1 || true
 
-          CMUX_TAG="$TAG" CMUX_SOCKET_PATH="$SOCK" CMUX_UI_TEST_MODE=1 "$APP/Contents/MacOS/cmux DEV" >/tmp/cmux-ci-lag.log 2>&1 &
+          CMUX_TAG="$TAG" CMUX_SOCKET_PATH="$SOCK" CMUX_UI_TEST_MODE=1 "$APP/Contents/MacOS/${APP_BINARY_NAME}" >/tmp/cmux-ci-lag.log 2>&1 &
           APP_PID=$!
           trap 'kill "$APP_PID" >/dev/null 2>&1 || true' EXIT
 
