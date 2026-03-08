@@ -1,5 +1,29 @@
 # cmux shell integration for bash
 
+_cmux_import_tmux_env_var() {
+    local name="$1"
+    [[ -n "$name" ]] || return 0
+    [[ -n "${!name:-}" ]] && return 0
+    [[ -n "${TMUX:-}" ]] || return 0
+    command -v tmux >/dev/null 2>&1 || return 0
+
+    local line value
+    line="$(tmux show-environment "$name" 2>/dev/null || true)"
+    [[ "$line" == "$name="* ]] || return 0
+    value="${line#*=}"
+    export "$name=$value"
+}
+
+_cmux_import_tmux_env() {
+    _cmux_import_tmux_env_var CMUX_SURFACE_ID
+    _cmux_import_tmux_env_var CMUX_PANEL_ID
+    _cmux_import_tmux_env_var CMUX_SOCKET_PATH
+    _cmux_import_tmux_env_var CMUX_BUNDLE_ID
+    _cmux_import_tmux_env_var CMUX_CLAUDE_HOOKS_DISABLED
+}
+
+_cmux_import_tmux_env
+
 _cmux_send() {
     local payload="$1"
     if command -v ncat >/dev/null 2>&1; then

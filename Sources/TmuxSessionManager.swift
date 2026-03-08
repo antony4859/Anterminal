@@ -34,6 +34,10 @@ class TmuxSessionManager {
 
     private init() {}
 
+    private func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
     // MARK: - Session Naming
 
     /// Generate a tmux session name for a panel.
@@ -87,21 +91,30 @@ class TmuxSessionManager {
         // Force UTF-8 with -u flag to avoid encoding issues in web terminal
         var cmd = "\(Self.tmuxPath) -u new-session -A -s \(name)"
         if let dir = workingDirectory, !dir.isEmpty {
-            cmd += " -c '\(dir.replacingOccurrences(of: "'", with: "'\\''"))'"
+            cmd += " -c \(shellQuoted(dir))"
+        }
+        let sock = socketPath ?? SocketControlSettings.socketPath()
+        var sessionEnvironment: [(String, String)] = [
+            ("CMUX_SURFACE_ID", panelId.uuidString),
+            ("CMUX_PANEL_ID", panelId.uuidString),
+            ("CMUX_SOCKET_PATH", sock)
+        ]
+        if let bundleId = Bundle.main.bundleIdentifier, !bundleId.isEmpty {
+            sessionEnvironment.append(("CMUX_BUNDLE_ID", bundleId))
+        }
+        if !ClaudeCodeIntegrationSettings.hooksEnabled() {
+            sessionEnvironment.append(("CMUX_CLAUDE_HOOKS_DISABLED", "1"))
+        }
+        for (key, value) in sessionEnvironment {
+            cmd += " -e \(shellQuoted("\(key)=\(value)"))"
         }
         // Hide tmux status bar — Ghostty provides its own chrome.
         cmd += " \\; set status off"
-        // Set the correct CMUX_SURFACE_ID/CMUX_PANEL_ID for this specific panel
-        // so claude-hook notifications highlight the right pane.
-        // setenv updates the tmux session env; send-keys exports in the running shell
-        // then clears the screen so the user doesn't see the export command.
-        cmd += " \\; setenv CMUX_SURFACE_ID \(panelId.uuidString)"
-        cmd += " \\; setenv CMUX_PANEL_ID \(panelId.uuidString)"
-        // Set CMUX_SOCKET_PATH so hooks/CLI inside tmux connect to the correct socket
-        // (critical for Release/DMG builds where the socket is /tmp/cmux.sock)
-        let sock = socketPath ?? SocketControlSettings.socketPath()
-        cmd += " \\; setenv CMUX_SOCKET_PATH \(sock)"
-        cmd += " \\; send-keys 'export CMUX_SURFACE_ID=\(panelId.uuidString) CMUX_PANEL_ID=\(panelId.uuidString) CMUX_SOCKET_PATH=\(sock) && clear' Enter"
+        // Keep the tmux session environment in sync for future panes/windows and
+        // wrapper scripts that query the tmux session environment directly.
+        for (key, value) in sessionEnvironment {
+            cmd += " \\; setenv -t \(name) \(key) \(shellQuoted(value))"
+        }
         return cmd
     }
 

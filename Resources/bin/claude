@@ -18,6 +18,30 @@ find_real_claude() {
     return 1
 }
 
+import_tmux_env_var() {
+    local name="$1"
+    [[ -n "$name" ]] || return 0
+    [[ -n "${!name:-}" ]] && return 0
+    [[ -n "${TMUX:-}" ]] || return 0
+    command -v tmux >/dev/null 2>&1 || return 0
+
+    local line value
+    line="$(tmux show-environment "$name" 2>/dev/null || true)"
+    [[ "$line" == "$name="* ]] || return 0
+    value="${line#*=}"
+    export "$name=$value"
+}
+
+import_tmux_cmux_env() {
+    import_tmux_env_var CMUX_SURFACE_ID
+    import_tmux_env_var CMUX_PANEL_ID
+    import_tmux_env_var CMUX_SOCKET_PATH
+    import_tmux_env_var CMUX_BUNDLE_ID
+    import_tmux_env_var CMUX_CLAUDE_HOOKS_DISABLED
+}
+
+import_tmux_cmux_env
+
 # Return 0 only when CMUX_SOCKET_PATH points to a live cmux socket.
 cmux_socket_available() {
     local socket="${CMUX_SOCKET_PATH:-}"
