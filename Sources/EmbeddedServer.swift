@@ -328,6 +328,43 @@ class EmbeddedServer {
             return .ok(.json(json as Any))
         }
 
+        // POST /api/tmux/attach-workspace - create a native tmux workspace from an existing session
+        server.POST["/api/tmux/attach-workspace"] = { request in
+            let body = (try? JSONSerialization.jsonObject(with: Data(request.body))) as? [String: Any]
+            guard let sessionName = body?["sessionName"] as? String,
+                  !sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return .badRequest(.text("sessionName required"))
+            }
+            let currentPath = body?["currentPath"] as? String
+
+            var resultId: String?
+            let sem = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                defer { sem.signal() }
+                guard let appDelegate = AppDelegate.shared else { return }
+                guard let wsId = appDelegate.addWorkspaceInPreferredMainWindow(
+                    workingDirectory: currentPath,
+                    isTmux: true,
+                    debugSource: "webAPI.attachTmuxWorkspace"
+                ) else {
+                    return
+                }
+                if let manager = appDelegate.tabManagerFor(tabId: wsId),
+                   let workspace = manager.tabs.first(where: { $0.id == wsId }),
+                   let panelId = workspace.focusedPanelId {
+                    TmuxSessionManager.shared.registerSession(panelId: panelId, sessionName: sessionName)
+                    workspace.setCustomTitle(sessionName)
+                }
+                resultId = wsId.uuidString
+            }
+            _ = sem.wait(timeout: .now() + 10)
+
+            if let resultId {
+                return .ok(.json(["ok": true, "workspaceId": resultId, "tmuxSession": sessionName] as [String: Any] as Any))
+            }
+            return .internalServerError
+        }
+
         // DELETE /api/tmux/sessions/:name - kill a specific tmux session
         server.DELETE["/api/tmux/sessions/:name"] = { request in
             guard let name = request.params[":name"] else {

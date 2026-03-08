@@ -62,7 +62,6 @@ enum EmbeddedServerHTML {
       border-right:1px solid rgba(255,255,255,0.06);
       z-index:100;
       transition:transform .25s ease, margin-left .25s ease;
-      /* collapsed by default on desktop */
       margin-left:-260px;
       pointer-events:none;
     }
@@ -79,7 +78,7 @@ enum EmbeddedServerHTML {
     .sidebar-scroll::-webkit-scrollbar-track{background:transparent}
     .sidebar-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
     #close-sidebar{
-      display:block;background:none;border:none;color:#888;font-size:20px;
+      display:none;background:none;border:none;color:#888;font-size:20px;
       cursor:pointer;width:32px;height:32px;border-radius:6px;
       line-height:32px;text-align:center;
     }
@@ -225,14 +224,29 @@ enum EmbeddedServerHTML {
       font-size:10px;font-weight:600;color:rgba(255,255,255,0.3);text-transform:uppercase;
       letter-spacing:.5px;padding:8px 4px 4px;
     }
-    .tmux-item{
+    .tmux-item,.cc-item{
       padding:6px 10px;border-radius:6px;margin-bottom:2px;
       cursor:pointer;transition:background .12s;
       -webkit-tap-highlight-color:transparent;
+      position:relative;
     }
-    .tmux-item:hover{background:rgba(255,255,255,0.06)}
+    .tmux-item:hover,.cc-item:hover{background:rgba(255,255,255,0.06)}
     .tmux-item:hover .tmux-attach{opacity:1}
-    .tmux-item:active{background:rgba(255,255,255,0.09)}
+    .tmux-item:active,.cc-item:active{background:rgba(255,255,255,0.09)}
+    .tmux-item.dragging,.cc-item.dragging{
+      opacity:.45;
+      transform:scale(.985);
+      background:rgba(99,102,241,0.12);
+      box-shadow:inset 0 0 0 1px rgba(129,140,248,0.24);
+    }
+    .tmux-item.session-drop-before,.cc-item.session-drop-before{
+      box-shadow:inset 0 2px 0 0 #a5b4fc;
+      background:rgba(99,102,241,0.08);
+    }
+    .tmux-item.session-drop-after,.cc-item.session-drop-after{
+      box-shadow:inset 0 -2px 0 0 #a5b4fc;
+      background:rgba(99,102,241,0.08);
+    }
     .tmux-name{
       font-size:11px;font-weight:600;color:#ccc;
       font-family:'SF Mono','Menlo','Consolas',monospace;
@@ -260,13 +274,12 @@ enum EmbeddedServerHTML {
     #workspaces-section{display:flex;flex-direction:column;min-height:0;flex-shrink:0}
 
     /* ---------- Claude Code session items ---------- */
-    .cc-item{
-      padding:6px 12px;cursor:pointer;transition:background 0.1s;
-      border-radius:6px;margin:1px 4px;
+    .cc-item{padding:6px 10px;margin-bottom:2px}
+    .cc-name{font-size:11px;font-weight:600;color:rgba(255,255,255,0.82)}
+    .cc-meta{
+      font-size:9px;color:rgba(255,255,255,0.3);margin-top:1px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     }
-    .cc-item:hover{background:rgba(99,102,241,0.1)}
-    .cc-name{font-size:12px;font-weight:500;color:rgba(255,255,255,0.8)}
-    .cc-meta{font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px}
 
     /* sidebar settings footer */
     .sidebar-settings-footer{
@@ -632,6 +645,7 @@ enum EmbeddedServerHTML {
         z-index:100;
       }
       #sidebar.open{transform:translateX(0);pointer-events:auto}
+      #close-sidebar{display:block}
       #sidebar-backdrop{
         position:fixed;inset:0;
         background:rgba(0,0,0,.5);z-index:99;
@@ -706,24 +720,24 @@ enum EmbeddedServerHTML {
           <button id="close-sidebar" onclick="app.closeSidebar()">&times;</button>
         </div>
         <div class="sidebar-scroll">
-        <div class="sidebar-section" id="workspaces-section">
+        <div class="sidebar-section" id="workspaces-section" data-section-name="workspaces">
           <div class="sidebar-section-header" onclick="app.toggleSection('workspaces')">
             Workspaces <span class="chevron">&#9660;</span>
           </div>
           <div class="sidebar-section-body" id="workspace-list" style="padding:6px 8px"></div>
         </div>
-        <div class="sidebar-section" id="tmux-section" style="display:none">
-          <div class="sidebar-section-header" onclick="app.toggleSection('tmux')">
+        <div class="sidebar-section" id="tmux-section" data-section-name="tmux" style="display:none">
+          <div class="sidebar-section-header collapsed" onclick="app.toggleSection('tmux')">
             Tmux Sessions <span class="chevron">&#9660;</span>
             <button onclick="event.stopPropagation();app.killAllTmuxSessions()" style="font-size:9px;background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;cursor:pointer;margin-left:auto" title="Kill all tmux sessions">Kill All</button>
           </div>
-          <div class="sidebar-section-body" id="tmux-sessions"></div>
+          <div class="sidebar-section-body collapsed" id="tmux-sessions"></div>
         </div>
-        <div class="sidebar-section" id="cc-section" style="display:none">
-          <div class="sidebar-section-header" onclick="app.toggleSection('cc')">
+        <div class="sidebar-section" id="cc-section" data-section-name="cc" style="display:none">
+          <div class="sidebar-section-header collapsed" onclick="app.toggleSection('cc')">
             Claude Code Sessions <span class="chevron">&#9660;</span>
           </div>
-          <div class="sidebar-section-body" id="cc-sessions"></div>
+          <div class="sidebar-section-body collapsed" id="cc-sessions"></div>
         </div>
         </div>
         <div class="sidebar-footer">
@@ -1371,9 +1385,16 @@ enum EmbeddedServerHTML {
         this._workspaceClickSuppressUntil = 0;
         this._boundWorkspaceTouchMove = this._onWorkspaceTouchPointerMove.bind(this);
         this._boundWorkspaceTouchEnd = this._onWorkspaceTouchPointerUpCancel.bind(this);
+        this._dragSidebarSession = null;
+        this._pendingOpenWorkspaceId = null;
+        this._sectionState = this._loadSectionState();
     }
 
     App.prototype.init = function() {
+        this.applySectionState();
+        if (window.innerWidth > 767) {
+            document.getElementById('sidebar').classList.add('open');
+        }
         this.setupExtraKeys();
         this.connectState();
         this.fetchWorkspaces();
@@ -1458,6 +1479,7 @@ enum EmbeddedServerHTML {
                         self._lastStateJson = newData;
                         self.workspaces = msg.data || [];
                         self.renderWorkspaces();
+                        self._maybeOpenPendingWorkspace();
                     }
                     if (msg.tmuxSessions) {
                         self.renderTmuxSessions(msg.tmuxSessions);
@@ -1480,6 +1502,7 @@ enum EmbeddedServerHTML {
         fetch('/api/workspaces').then(function(r){ return r.json(); }).then(function(data){
             self.workspaces = data;
             self.renderWorkspaces();
+            self._maybeOpenPendingWorkspace();
         }).catch(function(){});
     };
 
@@ -1662,7 +1685,11 @@ enum EmbeddedServerHTML {
         var sb = document.getElementById('sidebar');
         var bd = document.getElementById('sidebar-backdrop');
         sb.classList.toggle('open');
-        bd.classList.toggle('visible');
+        if (window.innerWidth <= 767) {
+            bd.classList.toggle('visible', sb.classList.contains('open'));
+        } else {
+            bd.classList.remove('visible');
+        }
         var self = this;
         setTimeout(function(){ self.fitAllTerminals(); }, 280);
     };
@@ -2016,41 +2043,7 @@ enum EmbeddedServerHTML {
                     closeBtn = closeBtn.parentNode;
                 }
 
-                var id = row.getAttribute('data-id');
-                var dir = row.getAttribute('data-dir');
-                var title = row.getAttribute('data-title');
-                var tmux = row.getAttribute('data-tmux') || null;
-                var panels = row.getAttribute('data-panels') || null;
-                var isMobile = window.innerWidth <= 767;
-
-                // On mobile: always open first panel as single full-screen tab (no splits)
-                if (isMobile) {
-                    self.openTerminal({ id: id, directory: dir, title: title, tmuxSession: tmux });
-                    return;
-                }
-
-                // Desktop: Look up full workspace data for layout tree
-                var wsData = null;
-                for (var wi = 0; wi < self.workspaces.length; wi++) {
-                    if (self.workspaces[wi].id === id) { wsData = self.workspaces[wi]; break; }
-                }
-
-                // Desktop: If workspace has a layout tree, use recursive LayoutView
-                if (wsData && wsData.layout && wsData.layout.type) {
-                    self.openLayoutView(id, title, wsData.layout, wsData.panels || []);
-                    return;
-                }
-
-                // Desktop: if workspace has multiple tmux panels but no layout, use flat SplitView
-                if (panels) {
-                    var panelNames = panels.split(',');
-                    if (panelNames.length > 1) {
-                        self.openSplitView(id, dir, title, panelNames);
-                        return;
-                    }
-                }
-
-                self.openTerminal({ id: id, directory: dir, title: title, tmuxSession: tmux });
+                self._openWorkspaceFromSidebarById(row.getAttribute('data-id'));
             });
 
             row.addEventListener('dragstart', function(e) {
@@ -2070,9 +2063,11 @@ enum EmbeddedServerHTML {
 
             row.addEventListener('dragover', function(e) {
                 var draggedId = self._dragWorkspaceId;
-                if (!draggedId || draggedId === row.getAttribute('data-id')) return;
+                var draggedSession = self._dragSidebarSession;
+                if (!draggedId && !draggedSession) return;
+                if (draggedId && draggedId === row.getAttribute('data-id')) return;
                 e.preventDefault();
-                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                if (e.dataTransfer) e.dataTransfer.dropEffect = draggedSession ? 'copy' : 'move';
                 self._clearWorkspaceDropIndicators();
                 var rect = row.getBoundingClientRect();
                 var position = e.clientY < (rect.top + rect.height / 2) ? 'before' : 'after';
@@ -2087,19 +2082,150 @@ enum EmbeddedServerHTML {
 
             row.addEventListener('drop', function(e) {
                 var draggedId = self._dragWorkspaceId;
+                var draggedSession = self._dragSidebarSession;
                 var targetId = row.getAttribute('data-id');
-                if (!draggedId || draggedId === targetId) return;
+                if (draggedId && draggedId === targetId) return;
+                if (!draggedId && !draggedSession) return;
                 e.preventDefault();
                 e.stopPropagation();
                 var rect = row.getBoundingClientRect();
                 var position = e.clientY < (rect.top + rect.height / 2) ? 'before' : 'after';
                 self._clearWorkspaceDropIndicators();
+                if (draggedSession) {
+                    self.createWorkspaceFromSidebarSession(draggedSession, targetId, position);
+                    return;
+                }
                 self.reorderWorkspace(draggedId, targetId, position);
             });
 
             row.addEventListener('pointerdown', function(e) {
                 self._beginTouchWorkspaceDrag(e, row);
             });
+        });
+
+        el.ondragover = function(e) {
+            if (!self._dragSidebarSession || e.target !== el) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+            self._clearWorkspaceDropIndicators();
+        };
+
+        el.ondrop = function(e) {
+            if (!self._dragSidebarSession || e.target !== el) return;
+            e.preventDefault();
+            e.stopPropagation();
+            self._clearWorkspaceDropIndicators();
+            self.createWorkspaceFromSidebarSession(self._dragSidebarSession, null, null);
+        };
+    };
+
+    App.prototype._openWorkspaceFromSidebarById = function(workspaceId) {
+        if (!workspaceId) return;
+        for (var i = 0; i < this.workspaces.length; i++) {
+            if (this.workspaces[i].id === workspaceId) {
+                this._openWorkspaceFromState(this.workspaces[i]);
+                return;
+            }
+        }
+    };
+
+    App.prototype._openWorkspaceFromState = function(workspace) {
+        if (!workspace) return;
+        var id = workspace.id;
+        var dir = workspace.directory || '';
+        var title = workspace.title || 'Terminal';
+        var tmuxPanels = (workspace.panels || []).filter(function(p){ return !!p.tmuxSession; });
+        var tmux = tmuxPanels.length > 0 ? tmuxPanels[0].tmuxSession : null;
+        var isMobile = window.innerWidth <= 767;
+
+        if (isMobile) {
+            this.openTerminal({ id: id, directory: dir, title: title, tmuxSession: tmux });
+            return;
+        }
+
+        if (workspace.layout && workspace.layout.type) {
+            this.openLayoutView(id, title, workspace.layout, workspace.panels || []);
+            return;
+        }
+
+        if (tmuxPanels.length > 1) {
+            var panelNames = tmuxPanels.map(function(panel){ return panel.tmuxSession; });
+            this.openSplitView(id, dir, title, panelNames);
+            return;
+        }
+
+        this.openTerminal({ id: id, directory: dir, title: title, tmuxSession: tmux });
+    };
+
+    App.prototype._maybeOpenPendingWorkspace = function() {
+        if (!this._pendingOpenWorkspaceId) return;
+        for (var i = 0; i < this.workspaces.length; i++) {
+            if (this.workspaces[i].id === this._pendingOpenWorkspaceId) {
+                var workspaceId = this._pendingOpenWorkspaceId;
+                this._pendingOpenWorkspaceId = null;
+                this._openWorkspaceFromSidebarById(workspaceId);
+                return;
+            }
+        }
+    };
+
+    App.prototype.createWorkspaceFromSidebarSession = function(sessionPayload, targetId, position) {
+        if (!sessionPayload || !sessionPayload.type) return Promise.resolve();
+        var self = this;
+        this.closeSidebarIfMobile();
+        var requestPath;
+        var requestBody;
+
+        if (sessionPayload.type === 'tmux') {
+            requestPath = '/api/tmux/attach-workspace';
+            requestBody = {
+                sessionName: sessionPayload.sessionName,
+                currentPath: sessionPayload.currentPath || ''
+            };
+        } else if (sessionPayload.type === 'claude') {
+            requestPath = '/api/cc/resume';
+            requestBody = {
+                projectPath: sessionPayload.projectPath
+            };
+        } else {
+            return Promise.resolve();
+        }
+
+        return fetch(requestPath, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (!data || !data.ok || !data.workspaceId) {
+                throw new Error((data && data.error) || 'Failed to create workspace');
+            }
+
+            var reorderPromise = Promise.resolve();
+            if (targetId && position) {
+                reorderPromise = fetch('/api/workspaces/reorder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        draggedId: data.workspaceId,
+                        targetId: targetId,
+                        position: position
+                    })
+                }).then(function(r) { return r.json(); }).then(function(reorderData) {
+                    if (!reorderData || reorderData.ok !== true) {
+                        throw new Error((reorderData && reorderData.error) || 'Failed to position workspace');
+                    }
+                });
+            }
+
+            return reorderPromise.then(function() {
+                self._pendingOpenWorkspaceId = data.workspaceId;
+                setTimeout(function() { self.fetchWorkspaces(); }, 250);
+            });
+        }).catch(function(err) {
+            console.error('Failed to create workspace from sidebar session:', err);
+            self.fetchWorkspaces();
+        }).finally(function() {
+            self._dragSidebarSession = null;
         });
     };
 
@@ -2464,7 +2590,7 @@ enum EmbeddedServerHTML {
         var html = '';
         for (var i = 0; i < sessions.length; i++) {
             var s = sessions[i];
-            html += '<div class="tmux-item" data-tmux-name="' + esc(s.name) + '">'
+            html += '<div class="tmux-item" draggable="true" data-tmux-name="' + esc(s.name) + '" data-current-path="' + esc(s.currentPath || '') + '">'
                 + '<div class="tmux-item-row">'
                 + '<span class="tmux-name">' + esc(s.name) + '</span>'
                 + '<span class="tmux-attach">Attach</span>'
@@ -2479,31 +2605,31 @@ enum EmbeddedServerHTML {
         el.querySelectorAll('.tmux-item').forEach(function(item) {
             item.addEventListener('click', function() {
                 var name = item.getAttribute('data-tmux-name');
-                self.attachToTmux(name);
+                var currentPath = item.getAttribute('data-current-path') || '';
+                self.createWorkspaceFromSidebarSession({
+                    type: 'tmux',
+                    sessionName: name,
+                    currentPath: currentPath
+                }, null, null);
+            });
+            item.addEventListener('dragstart', function(e) {
+                self._dragSidebarSession = {
+                    type: 'tmux',
+                    sessionName: item.getAttribute('data-tmux-name'),
+                    currentPath: item.getAttribute('data-current-path') || ''
+                };
+                item.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData('application/x-anterminal-sidebar-session', JSON.stringify(self._dragSidebarSession));
+                }
+            });
+            item.addEventListener('dragend', function() {
+                item.classList.remove('dragging');
+                self._dragSidebarSession = null;
+                self._clearWorkspaceDropIndicators();
             });
         });
-    };
-
-    App.prototype.attachToTmux = function(sessionName) {
-        var existing = null;
-        for (var i = 0; i < this.tabs.length; i++) {
-            if (this.tabs[i].tmuxSession === sessionName) { existing = this.tabs[i]; break; }
-        }
-        if (existing) {
-            this.activateTab(existing);
-            this.closeSidebarIfMobile();
-            return;
-        }
-
-        var empty = document.getElementById('empty-state');
-        if (empty) empty.style.display = 'none';
-
-        var tab = new TerminalTab('tmux-' + sessionName, '~', sessionName, sessionName);
-        this.tabs.push(tab);
-        tab.open(document.getElementById('terminal-container'));
-        this.activateTab(tab);
-        this.renderTabs();
-        this.closeSidebarIfMobile();
     };
 
     App.prototype.killAllTmuxSessions = function() {
@@ -2560,22 +2686,54 @@ enum EmbeddedServerHTML {
         this.closeSettings();
     };
 
-    /* ---- collapsible sections ---- */
-    App.prototype.toggleSection = function(name) {
-        var sectionId = name + '-section';
-        var section = document.getElementById(sectionId);
+    App.prototype._loadSectionState = function() {
+        var defaults = { workspaces: false, tmux: true, cc: true };
+        try {
+            var raw = localStorage.getItem('anterminal.sidebar.sections');
+            if (!raw) return defaults;
+            var parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return defaults;
+            return {
+                workspaces: parsed.workspaces === true,
+                tmux: parsed.tmux !== undefined ? !!parsed.tmux : defaults.tmux,
+                cc: parsed.cc !== undefined ? !!parsed.cc : defaults.cc
+            };
+        } catch (_) {
+            return defaults;
+        }
+    };
+
+    App.prototype._saveSectionState = function() {
+        try {
+            localStorage.setItem('anterminal.sidebar.sections', JSON.stringify(this._sectionState));
+        } catch (_) {}
+    };
+
+    App.prototype._setSectionCollapsed = function(name, collapsed) {
+        var section = document.getElementById(name + '-section');
         if (!section) return;
         var header = section.querySelector('.sidebar-section-header');
         var body = section.querySelector('.sidebar-section-body');
         if (!header || !body) return;
-        var isCollapsed = body.classList.contains('collapsed');
-        if (isCollapsed) {
-            body.classList.remove('collapsed');
-            header.classList.remove('collapsed');
-        } else {
-            body.classList.add('collapsed');
-            header.classList.add('collapsed');
-        }
+        header.classList.toggle('collapsed', collapsed);
+        body.classList.toggle('collapsed', collapsed);
+        this._sectionState[name] = collapsed;
+    };
+
+    App.prototype.applySectionState = function() {
+        this._setSectionCollapsed('workspaces', !!this._sectionState.workspaces);
+        this._setSectionCollapsed('tmux', !!this._sectionState.tmux);
+        this._setSectionCollapsed('cc', !!this._sectionState.cc);
+    };
+
+    /* ---- collapsible sections ---- */
+    App.prototype.toggleSection = function(name) {
+        var section = document.getElementById(name + '-section');
+        if (!section) return;
+        var body = section.querySelector('.sidebar-section-body');
+        if (!body) return;
+        this._setSectionCollapsed(name, !body.classList.contains('collapsed'));
+        this._saveSectionState();
     };
 
     /* ---- Claude Code sessions ---- */
@@ -2619,7 +2777,7 @@ enum EmbeddedServerHTML {
         var limit = Math.min(projects.length, 15);
         for (var j = 0; j < limit; j++) {
             var p = projects[j];
-            html += '<div class="cc-item" data-cc-path="' + esc(p.projectPath) + '">'
+            html += '<div class="cc-item" draggable="true" data-cc-path="' + esc(p.projectPath) + '" data-cc-name="' + esc(p.projectName) + '">'
                 + '<div class="cc-name">' + esc(p.projectName) + '</div>'
                 + '<div class="cc-meta">' + esc(p.projectPath) + ' &middot; ' + timeAgo(p.lastModified) + '</div>'
                 + '</div>';
@@ -2633,24 +2791,37 @@ enum EmbeddedServerHTML {
         el.querySelectorAll('.cc-item').forEach(function(item) {
             item.addEventListener('click', function() {
                 var path = item.getAttribute('data-cc-path');
-                self.resumeCCSession(path);
+                self.createWorkspaceFromSidebarSession({
+                    type: 'claude',
+                    projectPath: path,
+                    projectName: item.getAttribute('data-cc-name') || ''
+                }, null, null);
+            });
+            item.addEventListener('dragstart', function(e) {
+                self._dragSidebarSession = {
+                    type: 'claude',
+                    projectPath: item.getAttribute('data-cc-path'),
+                    projectName: item.getAttribute('data-cc-name') || ''
+                };
+                item.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData('application/x-anterminal-sidebar-session', JSON.stringify(self._dragSidebarSession));
+                }
+            });
+            item.addEventListener('dragend', function() {
+                item.classList.remove('dragging');
+                self._dragSidebarSession = null;
+                self._clearWorkspaceDropIndicators();
             });
         });
     };
 
     App.prototype.resumeCCSession = function(projectPath) {
-        var self = this;
-        this.closeSidebarIfMobile();
-        fetch('/api/cc/resume', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ projectPath: projectPath })
-        }).then(function(r){ return r.json(); }).then(function(data) {
-            if (data.ok) {
-                // Wait for the workspace to appear, then refresh
-                setTimeout(function() { self.fetchWorkspaces(); }, 1500);
-            }
-        }).catch(function(){});
+        this.createWorkspaceFromSidebarSession({
+            type: 'claude',
+            projectPath: projectPath
+        }, null, null);
     };
 
     /* ---- pane splitting ---- */
