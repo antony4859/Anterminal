@@ -300,7 +300,7 @@ jobs:
           APP_PATH="build/Build/Products/Release/anterminal.app"
           DMG_UNSIGNED="anterminal-macos-unsigned.dmg"
           rm -f ./*.dmg "$DMG_UNSIGNED"
-          create-dmg "$APP_PATH" ./
+          create-dmg --no-code-sign "$APP_PATH" ./
           mv ./anterminal*.dmg "$DMG_UNSIGNED" 2>/dev/null || mv ./*.dmg "$DMG_UNSIGNED"
 
       - name: Upload dSYMs to Sentry
