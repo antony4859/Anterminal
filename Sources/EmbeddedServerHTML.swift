@@ -170,6 +170,36 @@ enum EmbeddedServerHTML {
     }
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
     .ws-row.has-notification{border-left-color:#fbbf24}
+    .ws-row.dragging{
+      opacity:.38;
+      transform:scale(.985);
+      background:rgba(99,102,241,0.12);
+      box-shadow:inset 0 0 0 1px rgba(129,140,248,0.28);
+    }
+    .ws-row.ws-drop-before{
+      box-shadow:inset 0 2px 0 0 #a5b4fc;
+      background:rgba(99,102,241,0.08);
+    }
+    .ws-row.ws-drop-after{
+      box-shadow:inset 0 -2px 0 0 #a5b4fc;
+      background:rgba(99,102,241,0.08);
+    }
+    .ws-drag-ghost{
+      position:fixed;z-index:1000;pointer-events:none;
+      margin:0;
+      background:rgba(26,26,46,0.96);
+      border:1px solid rgba(129,140,248,0.35);
+      border-radius:10px;
+      box-shadow:0 14px 40px rgba(0,0,0,0.45),0 0 0 1px rgba(129,140,248,0.14);
+      opacity:.96;
+      transform:translate3d(0,0,0) scale(1.01);
+    }
+    body.workspace-dragging,
+    body.workspace-dragging *{
+      user-select:none;
+      -webkit-user-select:none;
+      cursor:grabbing!important;
+    }
 
     /* ---------- new workspace button area ---------- */
     .sidebar-footer{padding:8px;border-top:1px solid rgba(255,255,255,0.06)}
@@ -1336,6 +1366,11 @@ enum EmbeddedServerHTML {
         this._stickyCtrl = false;
         this._stickyAlt = false;
         this._fontSize = 14;
+        this._dragWorkspaceId = null;
+        this._touchWorkspaceDrag = null;
+        this._workspaceClickSuppressUntil = 0;
+        this._boundWorkspaceTouchMove = this._onWorkspaceTouchPointerMove.bind(this);
+        this._boundWorkspaceTouchEnd = this._onWorkspaceTouchPointerUpCancel.bind(this);
     }
 
     App.prototype.init = function() {
@@ -1455,6 +1490,171 @@ enum EmbeddedServerHTML {
             self.updateNotifBadge();
             self.renderNotifications();
         }).catch(function(){});
+    };
+
+    App.prototype.reorderWorkspace = function(draggedId, targetId, position) {
+        if (!draggedId || !targetId || draggedId === targetId) return;
+        var order = this.workspaces.map(function(w){ return w.id; });
+        var fromIdx = order.indexOf(draggedId);
+        var targetIdx = order.indexOf(targetId);
+        if (fromIdx === -1 || targetIdx === -1) return;
+
+        order.splice(fromIdx, 1);
+        targetIdx = order.indexOf(targetId);
+        if (targetIdx === -1) return;
+        if (position === 'after') targetIdx += 1;
+        order.splice(targetIdx, 0, draggedId);
+
+        var wsMap = {};
+        for (var i = 0; i < this.workspaces.length; i++) {
+            wsMap[this.workspaces[i].id] = this.workspaces[i];
+        }
+        this.workspaces = order.map(function(id){ return wsMap[id]; }).filter(Boolean);
+        this._lastWorkspacesHtml = '';
+        this.renderWorkspaces();
+
+        fetch('/api/workspaces/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ draggedId: draggedId, targetId: targetId, position: position })
+        }).then(function(r){ return r.json(); }).then(function(data) {
+            if (!data || data.ok !== true) {
+                throw new Error((data && data.error) || 'Failed to reorder workspace');
+            }
+        }).catch((function(self) {
+            return function(err) {
+                console.error('Failed to reorder workspace:', err);
+                self.fetchWorkspaces();
+            };
+        })(this));
+    };
+
+    App.prototype._clearWorkspaceDropIndicators = function() {
+        var list = document.getElementById('workspace-list');
+        if (!list) return;
+        list.querySelectorAll('.ws-drop-before, .ws-drop-after').forEach(function(row) {
+            row.classList.remove('ws-drop-before');
+            row.classList.remove('ws-drop-after');
+        });
+    };
+
+    App.prototype._positionWorkspaceDragGhost = function(clientX, clientY) {
+        var drag = this._touchWorkspaceDrag;
+        if (!drag || !drag.ghostEl) return;
+        drag.ghostEl.style.left = (clientX - drag.offsetX) + 'px';
+        drag.ghostEl.style.top = (clientY - drag.offsetY) + 'px';
+    };
+
+    App.prototype._beginTouchWorkspaceDrag = function(e, row) {
+        if (e.pointerType === 'mouse') return;
+        if (e.button !== undefined && e.button !== 0) return;
+        if (e.target && e.target.closest && e.target.closest('[data-close-ws]')) return;
+
+        this._cleanupTouchWorkspaceDrag();
+
+        var rect = row.getBoundingClientRect();
+        var ghost = row.cloneNode(true);
+        ghost.classList.add('ws-drag-ghost');
+        ghost.style.display = 'none';
+        ghost.style.width = rect.width + 'px';
+        ghost.style.height = rect.height + 'px';
+        ghost.style.left = rect.left + 'px';
+        ghost.style.top = rect.top + 'px';
+        document.body.appendChild(ghost);
+
+        var self = this;
+        this._touchWorkspaceDrag = {
+            pointerId: e.pointerId,
+            draggedId: row.getAttribute('data-id'),
+            sourceEl: row,
+            ghostEl: ghost,
+            offsetX: e.clientX - rect.left,
+            offsetY: e.clientY - rect.top,
+            startX: e.clientX,
+            startY: e.clientY,
+            active: false,
+            targetId: null,
+            position: null,
+            timer: setTimeout(function() {
+                var drag = self._touchWorkspaceDrag;
+                if (!drag || drag.pointerId !== e.pointerId) return;
+                drag.active = true;
+                drag.sourceEl.classList.add('dragging');
+                drag.ghostEl.style.display = 'block';
+                document.body.classList.add('workspace-dragging');
+                self._positionWorkspaceDragGhost(e.clientX, e.clientY);
+            }, 180)
+        };
+
+        document.addEventListener('pointermove', this._boundWorkspaceTouchMove, { passive: false });
+        document.addEventListener('pointerup', this._boundWorkspaceTouchEnd, { passive: false });
+        document.addEventListener('pointercancel', this._boundWorkspaceTouchEnd, { passive: false });
+    };
+
+    App.prototype._onWorkspaceTouchPointerMove = function(e) {
+        var drag = this._touchWorkspaceDrag;
+        if (!drag || drag.pointerId !== e.pointerId) return;
+
+        if (!drag.active) {
+            if (Math.abs(e.clientX - drag.startX) > 8 || Math.abs(e.clientY - drag.startY) > 8) {
+                this._cleanupTouchWorkspaceDrag();
+            }
+            return;
+        }
+
+        e.preventDefault();
+        this._positionWorkspaceDragGhost(e.clientX, e.clientY);
+        this._clearWorkspaceDropIndicators();
+
+        var target = document.elementFromPoint(e.clientX, e.clientY);
+        var row = target && target.closest ? target.closest('.ws-row') : null;
+        if (!row || row.getAttribute('data-id') === drag.draggedId) {
+            drag.targetId = null;
+            drag.position = null;
+            return;
+        }
+
+        var rect = row.getBoundingClientRect();
+        var position = e.clientY < (rect.top + rect.height / 2) ? 'before' : 'after';
+        row.classList.add(position === 'before' ? 'ws-drop-before' : 'ws-drop-after');
+        drag.targetId = row.getAttribute('data-id');
+        drag.position = position;
+    };
+
+    App.prototype._onWorkspaceTouchPointerUpCancel = function(e) {
+        var drag = this._touchWorkspaceDrag;
+        if (!drag || drag.pointerId !== e.pointerId) return;
+
+        var shouldReorder = drag.active && drag.targetId && drag.position && drag.draggedId !== drag.targetId;
+        var draggedId = drag.draggedId;
+        var targetId = drag.targetId;
+        var position = drag.position;
+
+        if (drag.active) {
+            e.preventDefault();
+            this._workspaceClickSuppressUntil = Date.now() + 400;
+        }
+
+        this._cleanupTouchWorkspaceDrag();
+
+        if (shouldReorder) {
+            this.reorderWorkspace(draggedId, targetId, position);
+        }
+    };
+
+    App.prototype._cleanupTouchWorkspaceDrag = function() {
+        var drag = this._touchWorkspaceDrag;
+        if (drag && drag.timer) clearTimeout(drag.timer);
+        if (drag && drag.sourceEl) drag.sourceEl.classList.remove('dragging');
+        if (drag && drag.ghostEl && drag.ghostEl.parentNode) {
+            drag.ghostEl.parentNode.removeChild(drag.ghostEl);
+        }
+        document.body.classList.remove('workspace-dragging');
+        document.removeEventListener('pointermove', this._boundWorkspaceTouchMove);
+        document.removeEventListener('pointerup', this._boundWorkspaceTouchEnd);
+        document.removeEventListener('pointercancel', this._boundWorkspaceTouchEnd);
+        this._touchWorkspaceDrag = null;
+        this._clearWorkspaceDropIndicators();
     };
 
     /* ---- sidebar ---- */
@@ -1781,7 +1981,7 @@ enum EmbeddedServerHTML {
             }
 
             var notifCls = hasNotif ? ' has-notification' : '';
-            var rowHtml = '<div class="ws-row' + sel + notifCls + '" data-id="' + esc(w.id) + '" data-dir="' + esc(w.directory) + '" data-title="' + esc(w.title) + '"' + tmuxAttr + panelCountAttr + panelsJson + '>'
+            var rowHtml = '<div class="ws-row' + sel + notifCls + '" draggable="true" data-id="' + esc(w.id) + '" data-dir="' + esc(w.directory) + '" data-title="' + esc(w.title) + '"' + tmuxAttr + panelCountAttr + panelsJson + '>'
                 + '<div class="ws-left">'
                 + '<div class="ws-top-line">' + topLine + '</div>'
                 + '<div class="ws-dir">' + esc(dirDisplay) + '</div>'
@@ -1798,6 +1998,11 @@ enum EmbeddedServerHTML {
         // Click handlers for workspace rows
         el.querySelectorAll('.ws-row').forEach(function(row) {
             row.addEventListener('click', function(e) {
+                if (Date.now() < self._workspaceClickSuppressUntil) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
                 // Check if close button was clicked
                 var closeBtn = e.target;
                 while (closeBtn && closeBtn !== row) {
@@ -1846,6 +2051,54 @@ enum EmbeddedServerHTML {
                 }
 
                 self.openTerminal({ id: id, directory: dir, title: title, tmuxSession: tmux });
+            });
+
+            row.addEventListener('dragstart', function(e) {
+                self._dragWorkspaceId = row.getAttribute('data-id');
+                row.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/workspace-id', self._dragWorkspaceId);
+                }
+            });
+
+            row.addEventListener('dragend', function() {
+                self._dragWorkspaceId = null;
+                row.classList.remove('dragging');
+                self._clearWorkspaceDropIndicators();
+            });
+
+            row.addEventListener('dragover', function(e) {
+                var draggedId = self._dragWorkspaceId;
+                if (!draggedId || draggedId === row.getAttribute('data-id')) return;
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                self._clearWorkspaceDropIndicators();
+                var rect = row.getBoundingClientRect();
+                var position = e.clientY < (rect.top + rect.height / 2) ? 'before' : 'after';
+                row.classList.add(position === 'before' ? 'ws-drop-before' : 'ws-drop-after');
+            });
+
+            row.addEventListener('dragleave', function(e) {
+                if (row.contains(e.relatedTarget)) return;
+                row.classList.remove('ws-drop-before');
+                row.classList.remove('ws-drop-after');
+            });
+
+            row.addEventListener('drop', function(e) {
+                var draggedId = self._dragWorkspaceId;
+                var targetId = row.getAttribute('data-id');
+                if (!draggedId || draggedId === targetId) return;
+                e.preventDefault();
+                e.stopPropagation();
+                var rect = row.getBoundingClientRect();
+                var position = e.clientY < (rect.top + rect.height / 2) ? 'before' : 'after';
+                self._clearWorkspaceDropIndicators();
+                self.reorderWorkspace(draggedId, targetId, position);
+            });
+
+            row.addEventListener('pointerdown', function(e) {
+                self._beginTouchWorkspaceDrag(e, row);
             });
         });
     };

@@ -263,6 +263,35 @@ class EmbeddedServer {
             }
         }
 
+        // POST /api/workspaces/reorder - reorder a workspace before or after another workspace
+        server.POST["/api/workspaces/reorder"] = { request in
+            guard let body = (try? JSONSerialization.jsonObject(with: Data(request.body))) as? [String: Any],
+                  let draggedId = body["draggedId"] as? String,
+                  let targetId = body["targetId"] as? String,
+                  let position = body["position"] as? String,
+                  (position == "before" || position == "after") else {
+                return .badRequest(.text("draggedId, targetId, and position are required"))
+            }
+
+            var params: [String: Any] = ["workspace_id": draggedId]
+            if position == "before" {
+                params["before_workspace_id"] = targetId
+            } else {
+                params["after_workspace_id"] = targetId
+            }
+
+            guard let commandData = try? JSONSerialization.data(withJSONObject: [
+                "method": "workspace.reorder",
+                "params": params
+            ]),
+                  let command = String(data: commandData, encoding: .utf8) else {
+                return .badRequest(.text("Invalid reorder payload"))
+            }
+
+            let result = EmbeddedServer.awaitBridgeCommand(command)
+            return .ok(.json(result as Any))
+        }
+
         // POST /api/workspaces/:id/tmux - toggle tmux for a workspace
         server["/api/workspaces/:id/tmux"] = { request in
             guard let wsId = request.params[":id"] else {
