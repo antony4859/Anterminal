@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish (for example v1.0.0)
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -16,9 +21,28 @@ jobs:
   build-sign-notarize:
     runs-on: depot-macos-latest
     steps:
+      - name: Resolve release tag
+        id: release_context
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}"
+          if [ -z "$TAG" ]; then
+            echo "Release tag is required" >&2
+            exit 1
+          fi
+          case "$TAG" in
+            v*) ;;
+            *)
+              echo "Release tag must start with v, got: $TAG" >&2
+              exit 1
+              ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ steps.release_context.outputs.tag }}
           submodules: recursive
 
       - name: Guard immutable release assets
@@ -27,7 +51,7 @@ jobs:
         with:
           script: |
             const { evaluateReleaseAssetGuard } = require('./scripts/release_asset_guard');
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = '${{ steps.release_context.outputs.tag }}';
             core.setOutput('skip_all', 'false');
             core.setOutput('skip_upload', 'false');
             core.setOutput('release_state', 'clear');
@@ -96,6 +120,40 @@ jobs:
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-path
 
+      - name: Check release signing secrets
+        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        id: release_secrets
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            APPLE_CERTIFICATE_BASE64 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_ID \
+            APPLE_APP_SPECIFIC_PASSWORD \
+            APPLE_TEAM_ID \
+            SPARKLE_PRIVATE_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping signed release build because required signing/notarization secrets are missing: ${missing[*]}"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install build deps
         if: steps.guard_release_assets.outputs.skip_all != 'true'
         run: |
@@ -115,7 +173,7 @@ jobs:
           restore-keys: spm-
 
       - name: Derive Sparkle public key from private key
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready == 'true'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
@@ -135,7 +193,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build
 
       - name: Inject Sparkle keys into Info.plist
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready == 'true'
         run: |
           APP_PLIST="build/Build/Products/Release/anterminal.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" >/dev/null 2>&1 || true
@@ -149,7 +207,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP_PLIST"
 
       - name: Import signing cert
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready == 'true'
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -173,7 +231,7 @@ jobs:
           security list-keychains -d user -s build.keychain
 
       - name: Codesign app
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready == 'true'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
@@ -191,7 +249,7 @@ jobs:
           /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
       - name: Notarize app
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -235,8 +293,18 @@ jobs:
           xcrun stapler staple "$DMG_RELEASE"
           xcrun stapler validate "$DMG_RELEASE"
 
+      - name: Package unsigned DMG
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready != 'true'
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/Release/anterminal.app"
+          DMG_UNSIGNED="anterminal-macos-unsigned.dmg"
+          rm -f ./*.dmg "$DMG_UNSIGNED"
+          create-dmg "$APP_PATH" ./
+          mv ./anterminal*.dmg "$DMG_UNSIGNED" 2>/dev/null || mv ./*.dmg "$DMG_UNSIGNED"
+
       - name: Upload dSYMs to Sentry
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready == 'true'
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: manaflow
@@ -250,7 +318,7 @@ jobs:
           sentry-cli debug-files upload --include-sources build/Build/Products/Release/
 
       - name: Generate Sparkle appcast
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.release_secrets.outputs.ready == 'true'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
@@ -258,17 +326,32 @@ jobs:
             echo "Missing SPARKLE_PRIVATE_KEY secret" >&2
             exit 1
           fi
-          RELEASE_REPO="${{ github.repository }}" ./scripts/sparkle_generate_appcast.sh anterminal-macos.dmg "$GITHUB_REF_NAME" appcast.xml
+          RELEASE_REPO="${{ github.repository }}" ./scripts/sparkle_generate_appcast.sh anterminal-macos.dmg "${{ steps.release_context.outputs.tag }}" appcast.xml
 
       - name: Upload release asset
-        if: steps.guard_release_assets.outputs.skip_upload != 'true'
+        if: steps.guard_release_assets.outputs.skip_upload != 'true' && steps.release_secrets.outputs.ready == 'true'
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
+          tag_name: ${{ steps.release_context.outputs.tag }}
           files: |
             anterminal-macos.dmg
             appcast.xml
           generate_release_notes: true
           overwrite_files: false
+
+      - name: Upload unsigned release asset
+        if: steps.guard_release_assets.outputs.skip_upload != 'true' && steps.release_secrets.outputs.ready != 'true'
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ steps.release_context.outputs.tag }}
+          files: |
+            anterminal-macos-unsigned.dmg
+          body: |
+            Unsigned fallback build for `${{ steps.release_context.outputs.tag }}`.
+
+            This fork does not currently have Apple signing and notarization secrets configured, so GitHub Actions published an unsigned DMG instead of the notarized release asset.
+          generate_release_notes: true
+          overwrite_files: true
 
       - name: Cleanup keychain
         if: always()

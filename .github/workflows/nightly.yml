@@ -145,17 +145,14 @@ jobs:
           fi
 
       - name: Install build deps
-        if: steps.nightly_secrets.outputs.ready == 'true'
         run: |
           npm install --global "create-dmg@${CREATE_DMG_VERSION}"
 
       - name: Download pre-built GhosttyKit.xcframework
-        if: steps.nightly_secrets.outputs.ready == 'true'
         run: |
           ./scripts/download-prebuilt-ghosttykit.sh
 
       - name: Cache Swift packages
-        if: steps.nightly_secrets.outputs.ready == 'true'
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: .spm-cache
@@ -176,14 +173,12 @@ jobs:
           echo "SPARKLE_PUBLIC_KEY=$DERIVED_PUBLIC_KEY" >> "$GITHUB_ENV"
 
       - name: Build app (Release)
-        if: steps.nightly_secrets.outputs.ready == 'true'
         run: |
           xcodebuild -scheme cmux -configuration Release -derivedDataPath build \
             -clonedSourcePackagesDirPath .spm-cache \
             CODE_SIGNING_ALLOWED=NO ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon-Nightly build
 
       - name: Inject nightly identity and metadata
-        if: steps.nightly_secrets.outputs.ready == 'true'
         run: |
           set -euo pipefail
           APP_DIR="build/Build/Products/Release"
@@ -200,12 +195,6 @@ jobs:
 
           # Update plist path after rename
           APP_PLIST="${APP_DIR}/anterminal NIGHTLY.app/Contents/Info.plist"
-
-          # --- Sparkle: point at the nightly appcast ---
-          /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP_PLIST" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string ${SPARKLE_PUBLIC_KEY}" "$APP_PLIST"
-          /usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/${{ github.repository }}/releases/download/nightly/appcast.xml" "$APP_PLIST"
 
           # Marketing version: append -nightly.YYYYMMDD so users can identify the channel and date
           BASE_MARKETING=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PLIST")
@@ -238,6 +227,16 @@ jobs:
           echo "Nightly build number: ${NIGHTLY_BUILD}"
           echo "Nightly immutable DMG: ${NIGHTLY_DMG_IMMUTABLE}"
           echo "Commit SHA: ${SHORT_SHA}"
+
+      - name: Inject nightly Sparkle metadata
+        if: steps.nightly_secrets.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          APP_PLIST="build/Build/Products/Release/anterminal NIGHTLY.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP_PLIST" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string ${SPARKLE_PUBLIC_KEY}" "$APP_PLIST"
+          /usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/${{ github.repository }}/releases/download/nightly/appcast.xml" "$APP_PLIST"
 
       - name: Import signing cert
         if: steps.nightly_secrets.outputs.ready == 'true'
@@ -329,6 +328,16 @@ jobs:
           # by appcast URLs to prevent signature/asset mismatch races.
           cp "$DMG_RELEASE" "$NIGHTLY_DMG_IMMUTABLE"
 
+      - name: Package unsigned nightly DMG
+        if: steps.nightly_secrets.outputs.ready != 'true'
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/Release/anterminal NIGHTLY.app"
+          DMG_UNSIGNED="anterminal-nightly-macos-unsigned.dmg"
+          rm -f ./*.dmg "$DMG_UNSIGNED"
+          create-dmg "$APP_PATH" ./
+          mv ./"anterminal NIGHTLY"*.dmg "$DMG_UNSIGNED" 2>/dev/null || mv ./anterminal*.dmg "$DMG_UNSIGNED" 2>/dev/null || mv ./*.dmg "$DMG_UNSIGNED"
+
       - name: Upload dSYMs to Sentry
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -354,7 +363,6 @@ jobs:
           RELEASE_REPO="${{ github.repository }}" ./scripts/sparkle_generate_appcast.sh "$NIGHTLY_DMG_IMMUTABLE" nightly appcast.xml
 
       - name: Move nightly tag to built commit
-        if: steps.nightly_secrets.outputs.ready == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -362,7 +370,7 @@ jobs:
           git tag -f nightly "${{ needs.decide.outputs.head_sha }}"
           git push origin refs/tags/nightly --force
 
-      - name: Publish nightly release assets
+      - name: Publish signed nightly release assets
         if: steps.nightly_secrets.outputs.ready == 'true'
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
@@ -380,6 +388,26 @@ jobs:
             anterminal-nightly-macos-${{ github.run_id }}*.dmg
             anterminal-nightly-macos.dmg
             appcast.xml
+          overwrite_files: true
+
+      - name: Publish unsigned nightly release assets
+        if: steps.nightly_secrets.outputs.ready != 'true'
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: nightly
+          name: Nightly
+          prerelease: true
+          make_latest: false
+          body: |
+            Automated nightly build for `${{ needs.decide.outputs.short_sha }}`.
+
+            **anterminal NIGHTLY** is a separate app (bundle ID `com.cmuxterm.app.nightly`) that can be installed alongside the stable release.
+
+            This fork does not currently have Apple signing and notarization secrets configured, so this nightly is published as an unsigned DMG.
+
+            [Download anterminal-nightly-macos-unsigned.dmg](https://github.com/${{ github.repository }}/releases/download/nightly/anterminal-nightly-macos-unsigned.dmg)
+          files: |
+            anterminal-nightly-macos-unsigned.dmg
           overwrite_files: true
 
       - name: Cleanup keychain
