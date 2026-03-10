@@ -334,7 +334,11 @@ jobs:
           set -euo pipefail
           APP_PATH="build/Build/Products/Release/anterminal NIGHTLY.app"
           DMG_UNSIGNED="anterminal-nightly-macos-unsigned.dmg"
-          rm -f ./*.dmg "$DMG_UNSIGNED"
+          ZIP_UNSIGNED="anterminal-nightly-macos-unsigned.zip"
+          /usr/bin/codesign --force --deep --sign - "$APP_PATH"
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          rm -f ./*.dmg "$DMG_UNSIGNED" "$ZIP_UNSIGNED"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_UNSIGNED"
           create-dmg --no-code-sign "$APP_PATH" ./
           mv ./"anterminal NIGHTLY"*.dmg "$DMG_UNSIGNED" 2>/dev/null || mv ./anterminal*.dmg "$DMG_UNSIGNED" 2>/dev/null || mv ./*.dmg "$DMG_UNSIGNED"
 
@@ -403,11 +407,20 @@ jobs:
 
             **anterminal NIGHTLY** is a separate app (bundle ID `com.cmuxterm.app.nightly`) that can be installed alongside the stable release.
 
-            This fork does not currently have Apple signing and notarization secrets configured, so this nightly is published as an unsigned DMG.
+            This fork does not currently have Apple signing and notarization secrets configured, so this nightly is published as an ad-hoc-signed, unsigned build.
 
             [Download anterminal-nightly-macos-unsigned.dmg](https://github.com/${{ github.repository }}/releases/download/nightly/anterminal-nightly-macos-unsigned.dmg)
+            [Download anterminal-nightly-macos-unsigned.zip](https://github.com/${{ github.repository }}/releases/download/nightly/anterminal-nightly-macos-unsigned.zip)
+
+            If macOS blocks first launch on another Mac, run:
+
+            ```bash
+            xattr -dr com.apple.quarantine "/Applications/anterminal NIGHTLY.app"
+            open "/Applications/anterminal NIGHTLY.app"
+            ```
           files: |
             anterminal-nightly-macos-unsigned.dmg
+            anterminal-nightly-macos-unsigned.zip
           overwrite_files: true
 
       - name: Cleanup keychain
